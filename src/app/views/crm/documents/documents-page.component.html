@@ -1,0 +1,145 @@
+<c-row>
+  <c-col xs="12">
+    <c-card class="mb-4">
+      <c-card-header>
+        <strong>Documentos</strong>
+      </c-card-header>
+      <c-card-body>
+        @if (error) {
+          <c-alert color="danger" class="mb-3">{{ error }}</c-alert>
+        }
+
+        @if (actionInfo) {
+          <c-alert color="success" class="mb-3">{{ actionInfo }}</c-alert>
+        }
+
+        <form cForm [formGroup]="form" class="mb-3">
+          <c-row class="g-3">
+            <c-col md="3">
+              <label cLabel for="patientId">ID de paciente</label>
+              <input id="patientId" cFormControl type="number" formControlName="patientId" />
+              @if (form.controls.patientId.touched && form.controls.patientId.invalid) {
+                <div class="text-danger small mt-1">Ingresa un ID de paciente válido.</div>
+              }
+            </c-col>
+
+            <c-col md="5">
+              <label cLabel for="title">Título (opcional)</label>
+              <input id="title" cFormControl type="text" formControlName="title" />
+            </c-col>
+
+            <c-col md="2">
+              <label cLabel for="page">Página</label>
+              <input id="page" cFormControl type="number" min="1" formControlName="page" />
+            </c-col>
+            <c-col md="2">
+              <label cLabel for="per_page">Por página</label>
+              <input id="per_page" cFormControl type="number" min="1" max="200" formControlName="per_page" />
+            </c-col>
+
+            <c-col md="4">
+              <label cLabel for="file">Archivo</label>
+              <input id="file" class="form-control" type="file" (change)="onFileChange($event)" />
+            </c-col>
+
+            <c-col xs="12" class="d-flex gap-2">
+              <button cButton color="primary" type="button" (click)="refresh()" [disabled]="isLoading">
+                {{ isLoading ? 'Cargando…' : 'Listar' }}
+              </button>
+              <button cButton color="success" type="button" (click)="upload()" [disabled]="isUploading">
+                {{ isUploading ? 'Subiendo…' : 'Subir' }}
+              </button>
+              <div class="text-body-secondary small align-self-center">Total: {{ total }}</div>
+            </c-col>
+          </c-row>
+        </form>
+
+        <form cForm [formGroup]="signForm" class="mb-4">
+          <div class="mb-2"><strong>Firmar documento</strong></div>
+          <c-row class="g-3">
+            <c-col md="2">
+              <label cLabel for="documentId">ID de documento</label>
+              <input id="documentId" cFormControl type="number" formControlName="documentId" />
+              @if (signForm.controls.documentId.touched && signForm.controls.documentId.invalid) {
+                <div class="text-danger small mt-1">Requerido.</div>
+              }
+            </c-col>
+            <c-col md="3">
+              <label cLabel for="method">Método (opcional)</label>
+              <input id="method" cFormControl type="text" formControlName="method" />
+            </c-col>
+            <c-col md="4">
+              <label cLabel for="meta">Meta (opcional)</label>
+              <input id="meta" cFormControl type="text" formControlName="meta" />
+            </c-col>
+            <c-col md="3">
+              <label cLabel for="signature">Firma (opcional)</label>
+              <input id="signature" class="form-control" type="file" (change)="onSignFileChange($event)" />
+            </c-col>
+            <c-col xs="12">
+              <button cButton color="warning" type="button" (click)="sign()" [disabled]="isUploading">
+                {{ isUploading ? 'Firmando…' : 'Firmar' }}
+              </button>
+            </c-col>
+          </c-row>
+        </form>
+
+        <table cTable [striped]="true">
+          <thead>
+            <tr>
+              <th scope="col">ID</th>
+              <th scope="col">Paciente</th>
+              <th scope="col">Título</th>
+              <th scope="col">Nombre de archivo</th>
+              <th scope="col">Mime</th>
+              <th scope="col">Reemplazar</th>
+              <th scope="col">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (d of items; track d.id) {
+              <tr>
+                <td>{{ d.id }}</td>
+                <td>{{ d.patient_id }}</td>
+                <td>
+                  <input
+                    class="form-control form-control-sm"
+                    type="text"
+                    [value]="titleById[d.id] ?? (d.title ?? '')"
+                    (input)="setTitle(d, $any($event.target).value)"
+                    [disabled]="actingId === d.id"
+                  />
+                </td>
+                <td>{{ d.filename ?? '' }}</td>
+                <td>{{ d.mime ?? d.mime_type ?? '' }}</td>
+                <td>
+                  <input
+                    class="form-control form-control-sm"
+                    type="file"
+                    (change)="onReplaceFileChange(d, $event)"
+                    [disabled]="actingId === d.id"
+                  />
+                </td>
+                <td class="d-flex flex-wrap gap-2">
+                  <button cButton color="secondary" size="sm" type="button" (click)="openFile(d.id)">Archivo</button>
+                  <button cButton color="secondary" size="sm" type="button" (click)="openHtml(d.id)">HTML</button>
+                  <button cButton color="info" size="sm" type="button" (click)="saveTitle(d)" [disabled]="actingId === d.id">Guardar título</button>
+                  <button cButton color="warning" size="sm" type="button" (click)="replace(d)" [disabled]="actingId === d.id">Reemplazar</button>
+                  <button cButton color="danger" size="sm" type="button" (click)="delete(d.id)" [disabled]="actingId === d.id">Eliminar</button>
+
+                  @if (rowStatusById[d.id]) {
+                    <span class="small text-body-secondary align-self-center">{{ rowStatusById[d.id] }}</span>
+                  }
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="7" class="text-center text-body-secondary">Sin datos</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </c-card-body>
+    </c-card>
+  </c-col>
+</c-row>

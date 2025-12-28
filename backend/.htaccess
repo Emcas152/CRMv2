@@ -1,0 +1,39 @@
+# CORS se maneja en index.php para evitar duplicados
+# NO agregar headers CORS aquí
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Pasar el header Authorization a PHP (necesario para JWT)
+    RewriteCond %{HTTP:Authorization} .+
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # Alternativa: establecer directamente la variable
+    SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+
+    # Manejar preflight OPTIONS requests
+    RewriteCond %{REQUEST_METHOD} OPTIONS
+    RewriteRule ^(.*)$ index.php [L,QSA]
+
+    # Redirigir todas las peticiones no-resueltas a index.php
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.php [L,QSA]
+</IfModule>
+
+# Deshabilitar listado de directorios
+Options -Indexes
+
+# Proteger archivos sensibles
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Headers de seguridad
+<IfModule mod_headers.c>
+    Header set X-XSS-Protection "1; mode=block"
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>

@@ -1,0 +1,30 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Cleanup CRM assets (images only)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$dst = \"src\\assets\\crm\"; $keep = @('.png','.jpg','.jpeg','.gif','.svg','.webp','.ico','.bmp'); $files = Get-ChildItem -LiteralPath $dst -Recurse -File -Force; $toRemove = $files | Where-Object { $keep -notcontains $_.Extension.ToLowerInvariant() }; Write-Host \"Removing non-image files: $($toRemove.Count)\"; $toRemove | Remove-Item -Force -ErrorAction Stop; $remaining = Get-ChildItem -LiteralPath $dst -Recurse -File -Force; Write-Host \"Remaining image files: $($remaining.Count)\""
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Cleanup CRM assets (images only) v2",
+			"type": "shell",
+			"command": "$dst = \"src\\assets\\crm\"; $keep = @('.png','.jpg','.jpeg','.gif','.svg','.webp','.ico','.bmp'); $files = Get-ChildItem -LiteralPath $dst -Recurse -File -Force; $toRemove = $files | Where-Object { $keep -notcontains $_.Extension.ToLowerInvariant() }; Write-Host \"Removing non-image files: $($toRemove.Count)\"; $toRemove | Remove-Item -Force -ErrorAction Stop; $remaining = Get-ChildItem -LiteralPath $dst -Recurse -File -Force; Write-Host \"Remaining image files: $($remaining.Count)\"",
+			"isBackground": false
+		},
+		{
+			"label": "Cleanup CRM assets (images only) v3",
+			"type": "shell",
+			"command": "$dst = 'src\\assets\\crm'; $keep = @('.png','.jpg','.jpeg','.gif','.svg','.webp','.ico','.bmp'); $files = Get-ChildItem -LiteralPath $dst -Recurse -File -Force; $toRemove = $files | Where-Object { $keep -notcontains $_.Extension.ToLowerInvariant() }; Write-Host ('Removing non-image files: ' + $toRemove.Count); $toRemove | Remove-Item -Force -ErrorAction Stop; $remaining = Get-ChildItem -LiteralPath $dst -Recurse -File -Force; Write-Host ('Remaining image files: ' + $remaining.Count)",
+			"isBackground": false
+		}
+	]
+}

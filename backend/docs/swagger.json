@@ -1,0 +1,19 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "CRM API",
+    "version": "1.0"
+  },
+  "paths": {
+    "/api/v1/clientes": {
+      "get": {
+        "summary": "Listar clientes",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    }
+  }
+}

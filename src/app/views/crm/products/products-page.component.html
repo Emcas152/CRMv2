@@ -1,0 +1,167 @@
+<c-row>
+  <c-col xs="12">
+    <c-card class="mb-4">
+      <c-card-header class="d-flex justify-content-between align-items-center">
+        <div>
+          <strong>Productos</strong>
+          <small class="text-body-secondary ms-2">Total: {{ total }}</small>
+        </div>
+        <div class="d-flex gap-2">
+          <button cButton color="secondary" type="button" (click)="startCreate()" [disabled]="isSaving || isLoading">
+            Nuevo
+          </button>
+          <button cButton color="primary" type="button" (click)="refresh()" [disabled]="isLoading">
+            {{ isLoading ? 'Cargando…' : 'Refrescar' }}
+          </button>
+        </div>
+      </c-card-header>
+      <c-card-body>
+        @if (error) {
+          <c-alert color="danger" class="mb-3">{{ error }}</c-alert>
+        }
+
+        @if (submitError) {
+          <c-alert color="danger" class="mb-3">{{ submitError }}</c-alert>
+        }
+
+        <form cForm class="mb-4" [formGroup]="filterForm" (ngSubmit)="refresh()">
+          <div class="mb-2"><strong>Filtros</strong></div>
+          <c-row class="g-3">
+            <c-col md="4">
+              <label cLabel for="f_search">Buscar</label>
+              <input id="f_search" cFormControl type="text" formControlName="search" />
+            </c-col>
+            <c-col md="3">
+              <label cLabel for="f_type">Tipo</label>
+              <select id="f_type" cSelect formControlName="type">
+                <option value="">(cualquiera)</option>
+                @for (t of types; track t) {
+                  <option [value]="t">{{ t }}</option>
+                }
+              </select>
+            </c-col>
+            <c-col md="3">
+              <label cLabel for="f_active">Activo</label>
+              <select id="f_active" cSelect formControlName="active">
+                <option value="">(cualquiera)</option>
+                <option value="true">Sí</option>
+                <option value="false">No</option>
+              </select>
+            </c-col>
+            <c-col md="2">
+              <label cLabel for="f_per_page">Por página</label>
+              <input id="f_per_page" cFormControl type="number" min="1" max="200" formControlName="per_page" />
+            </c-col>
+            <c-col xs="12" class="d-flex gap-2">
+              <button cButton color="primary" type="submit" [disabled]="isLoading">
+                {{ isLoading ? 'Cargando…' : 'Aplicar' }}
+              </button>
+              <button cButton color="secondary" type="button" (click)="prevPage()" [disabled]="isLoading">
+                Anterior
+              </button>
+              <button cButton color="secondary" type="button" (click)="nextPage()" [disabled]="isLoading">
+                Siguiente
+              </button>
+              <div class="text-body-secondary small align-self-center">Página: {{ filterForm.controls.page.value }}</div>
+            </c-col>
+          </c-row>
+        </form>
+
+        <form cForm class="mb-4" [formGroup]="form" (ngSubmit)="save()">
+          <div class="mb-2">
+            <strong>{{ editingId === null ? 'Crear producto' : 'Editar producto #' + editingId }}</strong>
+          </div>
+          <c-row class="g-3">
+            <c-col md="4">
+              <label cLabel for="name">Nombre</label>
+              <input id="name" cFormControl type="text" formControlName="name" />
+              @if (form.controls.name.touched && form.controls.name.invalid) {
+                <div class="text-danger small mt-1">Nombre requerido.</div>
+              }
+            </c-col>
+            <c-col md="2">
+              <label cLabel for="type">Tipo</label>
+              <select id="type" cSelect formControlName="type">
+                @for (t of types; track t) {
+                  <option [value]="t">{{ t }}</option>
+                }
+              </select>
+            </c-col>
+            <c-col md="2">
+              <label cLabel for="price">Precio</label>
+              <input id="price" cFormControl type="number" formControlName="price" />
+              @if (form.controls.price.touched && form.controls.price.invalid) {
+                <div class="text-danger small mt-1">Precio válido requerido.</div>
+              }
+            </c-col>
+            <c-col md="2">
+              <label cLabel for="stock">Stock</label>
+              <input id="stock" cFormControl type="number" formControlName="stock" />
+            </c-col>
+            <c-col md="2">
+              <label cLabel for="active">Activo</label>
+              <select id="active" cSelect formControlName="active">
+                <option value="true">Sí</option>
+                <option value="false">No</option>
+              </select>
+            </c-col>
+
+            <c-col md="3">
+              <label cLabel for="sku">SKU</label>
+              <input id="sku" cFormControl type="text" formControlName="sku" />
+            </c-col>
+            <c-col md="9">
+              <label cLabel for="description">Descripción</label>
+              <input id="description" cFormControl type="text" formControlName="description" />
+            </c-col>
+
+            <c-col xs="12" class="d-flex gap-2">
+              <button cButton color="success" type="submit" [disabled]="isSaving">
+                {{ isSaving ? 'Guardando…' : (editingId === null ? 'Crear' : 'Guardar') }}
+              </button>
+              @if (editingId !== null) {
+                <button cButton color="secondary" type="button" (click)="cancelEdit()" [disabled]="isSaving">
+                  Cancelar
+                </button>
+              }
+            </c-col>
+          </c-row>
+        </form>
+
+        <table cTable [striped]="true">
+          <thead>
+            <tr>
+              <th scope="col">ID</th>
+              <th scope="col">Nombre</th>
+              <th scope="col">Tipo</th>
+              <th scope="col">Precio</th>
+              <th scope="col">Stock</th>
+              <th scope="col">Activo</th>
+              <th scope="col">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (p of products; track p.id) {
+              <tr>
+                <td>{{ p.id }}</td>
+                <td>{{ p.name }}</td>
+                <td>{{ p.type }}</td>
+                <td>{{ p.price }}</td>
+                <td>{{ p.stock ?? '' }}</td>
+                <td>{{ p.active === false ? 'No' : 'Sí' }}</td>
+                <td class="d-flex gap-2">
+                  <button cButton color="secondary" size="sm" type="button" (click)="startEdit(p)">Editar</button>
+                  <button cButton color="danger" size="sm" type="button" (click)="delete(p)">Eliminar</button>
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="7" class="text-center text-body-secondary">Sin datos</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </c-card-body>
+    </c-card>
+  </c-col>
+</c-row>

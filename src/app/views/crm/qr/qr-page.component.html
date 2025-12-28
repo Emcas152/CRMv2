@@ -1,0 +1,50 @@
+<c-row>
+  <c-col xs="12">
+    <c-card class="mb-4">
+      <c-card-header>
+        <strong>QR</strong>
+      </c-card-header>
+      <c-card-body>
+        @if (error) {
+          <c-alert color="danger" class="mb-3">{{ error }}</c-alert>
+        }
+
+        <form cForm [formGroup]="form" class="mb-3">
+          <c-row class="g-3">
+            <c-col md="6">
+              <label cLabel for="qr_code">Código QR</label>
+              <input id="qr_code" cFormControl type="text" formControlName="qr_code" placeholder="QR" />
+              @if (form.controls.qr_code.touched && form.controls.qr_code.invalid) {
+                <div class="text-danger small mt-1">El QR es requerido.</div>
+              }
+            </c-col>
+
+            <c-col md="3">
+              <label cLabel for="action">Acción</label>
+              <select id="action" cSelect formControlName="action">
+                @for (a of actions; track a) {
+                  <option [value]="a">{{ a }}</option>
+                }
+              </select>
+            </c-col>
+
+            <c-col md="3">
+              <label cLabel for="points">Puntos</label>
+              <input id="points" cFormControl type="number" formControlName="points" />
+            </c-col>
+
+            <c-col xs="12">
+              <button cButton color="primary" type="button" (click)="onScan()" [disabled]="isSubmitting">
+                {{ isSubmitting ? 'Procesando…' : 'Escanear' }}
+              </button>
+            </c-col>
+          </c-row>
+        </form>
+
+        @if (result) {
+          <pre class="mb-0">{{ result | json }}</pre>
+        }
+      </c-card-body>
+    </c-card>
+  </c-col>
+</c-row>

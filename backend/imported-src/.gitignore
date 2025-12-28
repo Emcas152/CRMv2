@@ -1,0 +1,32 @@
+# Variables de entorno local
+.env.local
+
+# Logs
+logs/
+*.log
+
+# Archivos temporales
+storage/logs/*
+!storage/logs/.gitkeep
+
+# Archivos de usuario
+uploads/*
+!uploads/.gitkeep
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Composer (si decides usarlo en futuro)
+vendor/
+
+# Testing
+test-output.txt

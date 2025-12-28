@@ -1,0 +1,83 @@
+<c-row>
+  <c-col xs="12">
+    <c-card class="mb-4">
+      <c-card-header class="d-flex justify-content-between align-items-center">
+        <div>
+          <strong>Perfil</strong>
+        </div>
+        <button cButton color="primary" type="button" (click)="refresh()" [disabled]="isLoading">
+          {{ isLoading ? 'Cargando…' : 'Refrescar' }}
+        </button>
+      </c-card-header>
+      <c-card-body>
+        @if (error) {
+          <c-alert color="danger" class="mb-3">{{ error }}</c-alert>
+        }
+
+        @if (info) {
+          <c-alert color="success" class="mb-3">{{ info }}</c-alert>
+        }
+
+        <form cForm class="mb-4" [formGroup]="updateForm" (ngSubmit)="saveProfile()">
+          <div class="mb-2"><strong>Actualizar perfil</strong></div>
+          <c-row class="g-3">
+            <c-col md="4">
+              <label cLabel for="name">Nombre</label>
+              <input id="name" cFormControl type="text" formControlName="name" />
+              @if (updateForm.controls.name.touched && updateForm.controls.name.invalid) {
+                <div class="text-danger small mt-1">Nombre requerido.</div>
+              }
+            </c-col>
+            <c-col md="4">
+              <label cLabel for="email">Email</label>
+              <input id="email" cFormControl type="email" formControlName="email" />
+              @if (updateForm.controls.email.touched && updateForm.controls.email.invalid) {
+                <div class="text-danger small mt-1">Email válido requerido.</div>
+              }
+            </c-col>
+            <c-col md="4" class="d-flex align-items-end">
+              <button cButton color="success" type="submit" [disabled]="isSaving">
+                {{ isSaving ? 'Guardando…' : 'Guardar' }}
+              </button>
+            </c-col>
+          </c-row>
+        </form>
+
+        <form cForm class="mb-4" [formGroup]="passwordForm" (ngSubmit)="changePassword()">
+          <div class="mb-2"><strong>Cambiar contraseña</strong></div>
+          <c-row class="g-3">
+            <c-col md="4">
+              <label cLabel for="current_password">Contraseña actual</label>
+              <input id="current_password" cFormControl type="password" formControlName="current_password" />
+            </c-col>
+            <c-col md="4">
+              <label cLabel for="new_password">Nueva contraseña</label>
+              <input id="new_password" cFormControl type="password" formControlName="new_password" />
+            </c-col>
+            <c-col md="4">
+              <label cLabel for="confirm_password">Confirmar contraseña</label>
+              <input id="confirm_password" cFormControl type="password" formControlName="confirm_password" />
+            </c-col>
+            <c-col xs="12">
+              <button cButton color="warning" type="submit" [disabled]="isSaving">
+                {{ isSaving ? 'Actualizando…' : 'Cambiar contraseña' }}
+              </button>
+            </c-col>
+          </c-row>
+        </form>
+
+        <div class="mb-3">
+          <div class="mb-2"><strong>Subir foto</strong></div>
+          <div class="d-flex gap-2 align-items-center">
+            <input class="form-control" type="file" accept="image/*" (change)="onPhotoChange($event)" [disabled]="isSaving" />
+            <button cButton color="primary" type="button" (click)="uploadPhoto()" [disabled]="isSaving">
+              {{ isSaving ? 'Subiendo…' : 'Subir' }}
+            </button>
+          </div>
+        </div>
+
+        <pre class="mb-0">{{ profile | json }}</pre>
+      </c-card-body>
+    </c-card>
+  </c-col>
+</c-row>

@@ -1,0 +1,142 @@
+<c-row>
+  <c-col xs="12">
+    <c-card class="mb-4">
+      <c-card-header class="d-flex justify-content-between align-items-center">
+        <div>
+          <strong>Usuarios</strong>
+          <small class="text-body-secondary ms-2">Total: {{ total }}</small>
+        </div>
+        <div class="d-flex gap-2">
+          <button cButton color="secondary" type="button" (click)="startCreate()" [disabled]="isSaving || isLoading">
+            Nuevo
+          </button>
+          <button cButton color="primary" type="button" (click)="refresh()" [disabled]="isLoading">
+            {{ isLoading ? 'Cargando…' : 'Refrescar' }}
+          </button>
+        </div>
+      </c-card-header>
+      <c-card-body>
+        @if (error) {
+          <c-alert color="danger" class="mb-3">{{ error }}</c-alert>
+        }
+
+        @if (submitError) {
+          <c-alert color="danger" class="mb-3">{{ submitError }}</c-alert>
+        }
+
+        <form cForm class="mb-4" [formGroup]="filterForm" (ngSubmit)="refresh()">
+          <div class="mb-2"><strong>Filtros</strong></div>
+          <c-row class="g-3">
+            <c-col md="4">
+              <label cLabel for="f_search">Buscar</label>
+              <input id="f_search" cFormControl type="text" formControlName="search" />
+            </c-col>
+            <c-col md="4">
+              <label cLabel for="f_role">Rol</label>
+              <input id="f_role" cFormControl type="text" formControlName="role" placeholder="admin|staff|..." />
+            </c-col>
+            <c-col md="2">
+              <label cLabel for="f_per_page">Por página</label>
+              <input id="f_per_page" cFormControl type="number" min="1" max="200" formControlName="per_page" />
+            </c-col>
+            <c-col md="2" class="d-flex align-items-end">
+              <button cButton color="primary" type="submit" [disabled]="isLoading">
+                {{ isLoading ? 'Cargando…' : 'Aplicar' }}
+              </button>
+            </c-col>
+            <c-col xs="12" class="d-flex gap-2">
+              <button cButton color="secondary" type="button" (click)="prevPage()" [disabled]="isLoading">
+                Anterior
+              </button>
+              <button cButton color="secondary" type="button" (click)="nextPage()" [disabled]="isLoading">
+                Siguiente
+              </button>
+              <div class="text-body-secondary small align-self-center">Página: {{ filterForm.controls.page.value }}</div>
+            </c-col>
+          </c-row>
+        </form>
+
+        <form cForm class="mb-4" [formGroup]="form" (ngSubmit)="save()">
+          <div class="mb-2">
+            <strong>{{ editingId === null ? 'Crear usuario' : 'Editar usuario #' + editingId }}</strong>
+          </div>
+          <c-row class="g-3">
+            <c-col md="4">
+              <label cLabel for="name">Nombre</label>
+              <input id="name" cFormControl type="text" formControlName="name" />
+              @if (form.controls.name.touched && form.controls.name.invalid) {
+                <div class="text-danger small mt-1">Nombre requerido.</div>
+              }
+            </c-col>
+            <c-col md="4">
+              <label cLabel for="email">Email</label>
+              <input id="email" cFormControl type="email" formControlName="email" />
+              @if (form.controls.email.touched && form.controls.email.invalid) {
+                <div class="text-danger small mt-1">Email válido requerido.</div>
+              }
+            </c-col>
+            <c-col md="4">
+              <label cLabel for="role">Rol</label>
+              <input id="role" cFormControl type="text" formControlName="role" placeholder="admin|staff|..." />
+              @if (form.controls.role.touched && form.controls.role.invalid) {
+                <div class="text-danger small mt-1">Rol requerido.</div>
+              }
+            </c-col>
+
+            <c-col md="4">
+              <label cLabel for="phone">Teléfono</label>
+              <input id="phone" cFormControl type="text" formControlName="phone" />
+            </c-col>
+            <c-col md="4">
+              <label cLabel for="password">Contraseña {{ editingId === null ? '' : '(opcional)' }}</label>
+              <input id="password" cFormControl type="password" formControlName="password" />
+            </c-col>
+
+            <c-col xs="12" class="d-flex gap-2">
+              <button cButton color="success" type="submit" [disabled]="isSaving">
+                {{ isSaving ? 'Guardando…' : (editingId === null ? 'Crear' : 'Guardar') }}
+              </button>
+              @if (editingId !== null) {
+                <button cButton color="secondary" type="button" (click)="cancelEdit()" [disabled]="isSaving">
+                  Cancelar
+                </button>
+              }
+            </c-col>
+          </c-row>
+        </form>
+
+        <table cTable [striped]="true">
+          <thead>
+            <tr>
+              <th scope="col">ID</th>
+              <th scope="col">Nombre</th>
+              <th scope="col">Email</th>
+              <th scope="col">Rol</th>
+              <th scope="col">Teléfono</th>
+              <th scope="col">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (u of users; track u.id) {
+              <tr>
+                <td>{{ u.id }}</td>
+                <td>{{ u.name }}</td>
+                <td>{{ u.email }}</td>
+                <td>{{ u.role }}</td>
+                <td>{{ u.phone ?? '' }}</td>
+                <td class="d-flex gap-2">
+                  <button cButton color="secondary" size="sm" type="button" (click)="startEdit(u)">Editar</button>
+                  <button cButton color="danger" size="sm" type="button" (click)="delete(u)">Eliminar</button>
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="6" class="text-center text-body-secondary">Sin datos</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </c-card-body>
+    </c-card>
+  </c-col>
+</c-row>

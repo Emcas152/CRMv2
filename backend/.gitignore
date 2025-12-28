@@ -1,0 +1,25 @@
+# Environment / secrets
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+storage/logs/
+
+# Uploads (runtime files)
+uploads/
+
+# Vendor (if added later)
+vendor/

@@ -1,0 +1,201 @@
+<c-row>
+  <c-col xs="12">
+    <c-card class="mb-4">
+      <c-card-header class="d-flex justify-content-between align-items-center">
+        <div>
+          <strong>Citas</strong>
+          <small class="text-body-secondary ms-2">Total: {{ total }}</small>
+        </div>
+        <div class="d-flex gap-2">
+          <button cButton color="secondary" type="button" (click)="startCreate()" [disabled]="isSaving || isLoading">
+            Nuevo
+          </button>
+          <button cButton color="primary" type="button" (click)="refresh()" [disabled]="isLoading">
+            {{ isLoading ? 'Cargando…' : 'Refrescar' }}
+          </button>
+        </div>
+      </c-card-header>
+      <c-card-body>
+        @if (error) {
+          <c-alert color="danger" class="mb-3">{{ error }}</c-alert>
+        }
+
+        @if (submitError) {
+          <c-alert color="danger" class="mb-3">{{ submitError }}</c-alert>
+        }
+
+        @if (actionError) {
+          <c-alert color="danger" class="mb-3">{{ actionError }}</c-alert>
+        }
+
+        <form cForm class="mb-4" [formGroup]="filterForm" (ngSubmit)="refresh()">
+          <div class="mb-2"><strong>Filtros</strong></div>
+          <c-row class="g-3">
+            <c-col md="2">
+              <label cLabel for="f_patient_id">Patient</label>
+              <select id="f_patient_id" cSelect formControlName="patient_id">
+                <option value="0">(cualquiera)</option>
+                @for (p of patients; track p.id) {
+                  <option [value]="p.id">{{ p.name }}</option>
+                }
+              </select>
+            </c-col>
+            <c-col md="3">
+              <label cLabel for="f_date_from">Desde</label>
+              <input id="f_date_from" cFormControl type="date" formControlName="date_from" />
+            </c-col>
+            <c-col md="3">
+              <label cLabel for="f_date_to">Hasta</label>
+              <input id="f_date_to" cFormControl type="date" formControlName="date_to" />
+            </c-col>
+            <c-col md="2">
+              <label cLabel for="f_status">Estado</label>
+              <select id="f_status" cSelect formControlName="status">
+                <option value="">(cualquiera)</option>
+                @for (s of statuses; track s) {
+                  <option [value]="s">{{ statusLabels[s] }}</option>
+                }
+              </select>
+            </c-col>
+            <c-col md="2">
+              <label cLabel for="f_per_page">Por página</label>
+              <input id="f_per_page" cFormControl type="number" min="1" max="200" formControlName="per_page" />
+            </c-col>
+            <c-col xs="12" class="d-flex gap-2">
+              <button cButton color="primary" type="submit" [disabled]="isLoading">
+                {{ isLoading ? 'Cargando…' : 'Aplicar' }}
+              </button>
+              <button cButton color="secondary" type="button" (click)="prevPage()" [disabled]="isLoading">
+                Anterior
+              </button>
+              <button cButton color="secondary" type="button" (click)="nextPage()" [disabled]="isLoading">
+                Siguiente
+              </button>
+              <div class="text-body-secondary small align-self-center">
+                Página: {{ filterForm.controls.page.value }}
+              </div>
+            </c-col>
+          </c-row>
+        </form>
+
+        <form cForm class="mb-4" [formGroup]="form" (ngSubmit)="save()">
+          <div class="mb-2">
+            <strong>{{ editingId === null ? 'Crear cita' : 'Editar cita #' + editingId }}</strong>
+          </div>
+          <c-row class="g-3">
+            <c-col md="2">
+              <label cLabel for="patient_id">Patient</label>
+              <select id="patient_id" cSelect formControlName="patient_id">
+                <option value="0">(seleccionar)</option>
+                @for (p of patients; track p.id) {
+                  <option [value]="p.id">{{ p.name }}</option>
+                }
+              </select>
+              @if (form.controls.patient_id.touched && form.controls.patient_id.invalid) {
+                <div class="text-danger small mt-1">Requerido.</div>
+              }
+            </c-col>
+            <c-col md="2">
+              <label cLabel for="appointment_date">Fecha</label>
+              <input id="appointment_date" cFormControl type="date" formControlName="appointment_date" />
+              @if (form.controls.appointment_date.touched && form.controls.appointment_date.invalid) {
+                <div class="text-danger small mt-1">Requerido.</div>
+              }
+            </c-col>
+            <c-col md="2">
+              <label cLabel for="appointment_time">Hora</label>
+              <input id="appointment_time" cFormControl type="time" formControlName="appointment_time" />
+              @if (form.controls.appointment_time.touched && form.controls.appointment_time.invalid) {
+                <div class="text-danger small mt-1">Requerido.</div>
+              }
+            </c-col>
+            <c-col md="3">
+              <label cLabel for="service">Servicio</label>
+              <input id="service" cFormControl type="text" formControlName="service" />
+              @if (form.controls.service.touched && form.controls.service.invalid) {
+                <div class="text-danger small mt-1">Requerido.</div>
+              }
+            </c-col>
+            <c-col md="3">
+              <label cLabel for="status">Estado</label>
+              <select id="status" cSelect formControlName="status">
+                @for (s of statuses; track s) {
+                  <option [value]="s">{{ statusLabels[s] }}</option>
+                }
+              </select>
+            </c-col>
+
+            <c-col md="2">
+              <label cLabel for="staff_member_id">Staff</label>
+              <select id="staff_member_id" cSelect formControlName="staff_member_id">
+                <option value="0">(ninguno)</option>
+                @for (s of staffMembers; track s.id) {
+                  <option [value]="s.id">{{ s.name }}</option>
+                }
+              </select>
+            </c-col>
+            <c-col md="10">
+              <label cLabel for="notes">Notas</label>
+              <input id="notes" cFormControl type="text" formControlName="notes" />
+            </c-col>
+
+            <c-col xs="12" class="d-flex gap-2">
+              <button cButton color="success" type="submit" [disabled]="isSaving">
+                {{ isSaving ? 'Guardando…' : (editingId === null ? 'Crear' : 'Guardar') }}
+              </button>
+              @if (editingId !== null) {
+                <button cButton color="secondary" type="button" (click)="cancelEdit()" [disabled]="isSaving">
+                  Cancelar
+                </button>
+              }
+            </c-col>
+          </c-row>
+        </form>
+
+        <table cTable [striped]="true">
+          <thead>
+            <tr>
+              <th scope="col">ID</th>
+              <th scope="col">Paciente</th>
+              <th scope="col">Fecha</th>
+              <th scope="col">Hora</th>
+              <th scope="col">Servicio</th>
+              <th scope="col">Estado</th>
+              <th scope="col">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (a of items; track a.id) {
+              <tr>
+                <td>{{ a.id }}</td>
+                <td>{{ a.patient_name || a.patient_id }}</td>
+                <td>{{ a.appointment_date }}</td>
+                <td>{{ a.appointment_time }}</td>
+                <td>{{ a.service }}</td>
+                <td>{{ a.status ? statusLabels[a.status] : '' }}</td>
+                <td class="d-flex flex-wrap gap-2">
+                  <button cButton color="secondary" size="sm" type="button" (click)="startEdit(a)" [disabled]="actingId === a.id">Editar</button>
+                  <button cButton color="danger" size="sm" type="button" (click)="delete(a)" [disabled]="actingId === a.id">Eliminar</button>
+                  <button cButton color="info" size="sm" type="button" (click)="sendEmail(a)" [disabled]="actingId === a.id">Email</button>
+                  <button cButton color="info" size="sm" type="button" (click)="sendWhatsapp(a)" [disabled]="actingId === a.id">WhatsApp</button>
+                  <button cButton color="warning" size="sm" type="button" (click)="generateReminder(a)" [disabled]="actingId === a.id">Recordatorio</button>
+                  <button cButton color="success" size="sm" type="button" (click)="updateStatus(a, 'confirmed')" [disabled]="actingId === a.id">Confirmar</button>
+                  <button cButton color="success" size="sm" type="button" (click)="updateStatus(a, 'completed')" [disabled]="actingId === a.id">Completar</button>
+                  <button cButton color="secondary" size="sm" type="button" (click)="updateStatus(a, 'cancelled')" [disabled]="actingId === a.id">Cancelar</button>
+
+                  @if (rowStatusById[a.id]) {
+                    <span class="small text-body-secondary align-self-center">{{ rowStatusById[a.id] }}</span>
+                  }
+                </td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="7" class="text-center text-body-secondary">Sin datos</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </c-card-body>
+    </c-card>
+  </c-col>
+</c-row>

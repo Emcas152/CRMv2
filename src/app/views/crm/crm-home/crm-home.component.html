@@ -1,0 +1,169 @@
+<c-row>
+  <c-col xs="12">
+    @if (deniedRoles) {
+      <c-alert color="warning" class="mb-4">
+        No tienes permisos para acceder a esa sección. Requerido: <strong>{{ deniedRoles }}</strong>.
+      </c-alert>
+    }
+
+    @if (error) {
+      <c-alert color="danger" class="mb-4">{{ error }}</c-alert>
+    }
+  </c-col>
+</c-row>
+
+<c-row class="g-4">
+  <c-col sm="6" xl="3">
+    <c-card>
+      <c-card-body>
+        <div class="text-body-secondary small">Ventas del mes (registros)</div>
+        <div class="fs-4 fw-semibold">{{ monthSalesTotal }}</div>
+        <div class="small text-body-secondary">Cargadas: {{ monthSalesCount }}</div>
+      </c-card-body>
+    </c-card>
+  </c-col>
+  <c-col sm="6" xl="3">
+    <c-card>
+      <c-card-body>
+        <div class="text-body-secondary small">Total estimado del mes</div>
+        <div class="fs-4 fw-semibold">{{ formatMoney(monthSalesAmount) }}</div>
+        <div class="small text-body-secondary">Según ventas cargadas</div>
+      </c-card-body>
+    </c-card>
+  </c-col>
+  <c-col sm="6" xl="3">
+    <c-card>
+      <c-card-body>
+        <div class="text-body-secondary small">Ventas de hoy</div>
+        <div class="fs-4 fw-semibold">{{ todaySalesCount }}</div>
+        <div class="small text-body-secondary">Según ventas cargadas</div>
+      </c-card-body>
+    </c-card>
+  </c-col>
+  <c-col sm="6" xl="3">
+    <c-card>
+      <c-card-body>
+        <div class="text-body-secondary small">Pendientes</div>
+        <div class="fs-4 fw-semibold">{{ pendingSalesCount }}</div>
+        <div class="small text-body-secondary">Estado = pending</div>
+      </c-card-body>
+    </c-card>
+  </c-col>
+</c-row>
+
+<c-row class="mt-4 g-4">
+  <c-col lg="8">
+    <c-card class="mb-4">
+      <c-card-header><strong>Ventas del mes</strong></c-card-header>
+      <c-card-body>
+        <c-chart type="line" [data]="salesByDayChartData" [options]="salesByDayChartOptions" [height]="300" class="w-100" />
+      </c-card-body>
+    </c-card>
+  </c-col>
+
+  <c-col lg="4">
+    <c-card class="mb-4">
+      <c-card-header><strong>Ventas por método</strong></c-card-header>
+      <c-card-body>
+        <c-chart type="doughnut" [data]="salesByPaymentChartData" [options]="salesByPaymentChartOptions" [height]="300" class="w-100" />
+      </c-card-body>
+    </c-card>
+  </c-col>
+</c-row>
+
+<c-row class="mt-4">
+  <c-col lg="8">
+    <c-card class="mb-4">
+      <c-card-header class="d-flex align-items-center justify-content-between">
+        <strong>Últimas ventas</strong>
+        <a cButton color="primary" size="sm" [routerLink]="['/crm/sales']">Ver ventas</a>
+      </c-card-header>
+      <c-card-body>
+        @if (isLoading) {
+          <div class="text-body-secondary">Cargando…</div>
+        } @else {
+          <div class="table-responsive">
+            <table cTable>
+              <thead>
+              <tr>
+                <th>#</th>
+                <th>Paciente</th>
+                <th>Estado</th>
+                <th>Método</th>
+                <th>Creado</th>
+              </tr>
+              </thead>
+              <tbody>
+                @for (s of recentSales; track s.id) {
+                  <tr>
+                    <td>{{ s.id }}</td>
+                    <td>{{ s.patient_id }}</td>
+                    <td>{{ s.status || '-' }}</td>
+                    <td>{{ s.payment_method }}</td>
+                    <td>{{ s.created_at || '-' }}</td>
+                  </tr>
+                }
+                @if (!recentSales.length) {
+                  <tr>
+                    <td colspan="5" class="text-body-secondary">Sin ventas para mostrar.</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </c-card-body>
+    </c-card>
+  </c-col>
+
+  <c-col lg="4">
+    <c-card class="mb-4">
+      <c-card-header><strong>Reglas por perfil</strong></c-card-header>
+      <c-card-body>
+        <div class="mb-2">
+          <div class="text-body-secondary small">Tu perfil</div>
+          <div class="fw-semibold">{{ me?.role || '—' }}</div>
+        </div>
+
+        <div class="small">
+          <div class="fw-semibold">superadmin</div>
+          <div class="text-body-secondary">Acceso total del sistema (incluye administración).</div>
+        </div>
+        <hr />
+        <div class="small">
+          <div class="fw-semibold">admin</div>
+          <div class="text-body-secondary">Administración: Usuarios y Plantillas email + acceso al CRM.</div>
+        </div>
+        <hr />
+        <div class="small">
+          <div class="fw-semibold">doctor</div>
+          <div class="text-body-secondary">Operación clínica: pacientes, citas, documentos, ventas, perfil y QR.</div>
+        </div>
+        <hr />
+        <div class="small">
+          <div class="fw-semibold">staff</div>
+          <div class="text-body-secondary">Operación diaria: pacientes, citas, ventas, documentos, productos, perfil y QR.</div>
+        </div>
+        <hr />
+        <div class="small">
+          <div class="fw-semibold">patient</div>
+          <div class="text-body-secondary">Acceso limitado (según configuración). Recomendado: perfil, documentos y QR.</div>
+        </div>
+      </c-card-body>
+    </c-card>
+
+    <c-card>
+      <c-card-header><strong>Accesos rápidos</strong></c-card-header>
+      <c-card-body>
+        <div class="d-flex flex-wrap gap-2">
+          <a cButton color="primary" size="sm" [routerLink]="['/crm/patients']">Pacientes</a>
+          <a cButton color="primary" size="sm" [routerLink]="['/crm/appointments']">Citas</a>
+          <a cButton color="primary" size="sm" [routerLink]="['/crm/sales']">Ventas</a>
+          <a cButton color="primary" size="sm" [routerLink]="['/crm/documents']">Documentos</a>
+          <a cButton color="primary" size="sm" [routerLink]="['/crm/products']">Productos</a>
+          <a cButton color="primary" size="sm" [routerLink]="['/crm/profile']">Perfil</a>
+        </div>
+      </c-card-body>
+    </c-card>
+  </c-col>
+</c-row>

@@ -1,0 +1,87 @@
+<div class="bg-light dark:bg-transparent min-vh-100 d-flex flex-row align-items-center">
+  <c-container breakpoint="md">
+    <c-row class="justify-content-center">
+      <c-col lg="10" xl="8">
+        <c-card-group>
+          <c-card class="p-4">
+            <c-card-body>
+              <form cForm [formGroup]="form" (ngSubmit)="onSubmit()">
+                <div class="text-center mb-3">
+                  <img
+                    src="assets/LOGO-01.png"
+                    class="img-fluid"
+                    style="max-width: 180px"
+                    alt="CRM"
+                  />
+                </div>
+
+                <h1>Iniciar sesión</h1>
+                <p class="text-body-secondary">Accede a tu cuenta</p>
+
+                @if (submitError) {
+                  <c-alert color="danger" class="mb-3">{{ submitError }}</c-alert>
+                }
+
+                <c-input-group class="mb-3">
+                  <span cInputGroupText>
+                    <svg cIcon name="cilUser"></svg>
+                  </span>
+                  <input
+                    autoComplete="username"
+                    cFormControl
+                    placeholder="Correo"
+                    type="email"
+                    formControlName="email"
+                  />
+                </c-input-group>
+                @if (form.controls.email.touched && form.controls.email.invalid) {
+                  <div class="text-danger small mb-2">Ingresa un email válido.</div>
+                }
+                <c-input-group class="mb-4">
+                  <span cInputGroupText>
+                    <svg cIcon name="cilLockLocked"></svg>
+                  </span>
+                  <input
+                    autoComplete="current-password"
+                    cFormControl
+                    placeholder="Contraseña"
+                    type="password"
+                    formControlName="password"
+                  />
+                </c-input-group>
+                @if (form.controls.password.touched && form.controls.password.invalid) {
+                  <div class="text-danger small mb-2">La contraseña es requerida.</div>
+                }
+                <c-row>
+                  <c-col xs="6">
+                    <button cButton class="px-4" color="primary" type="submit" [disabled]="isSubmitting">
+                      {{ isSubmitting ? 'Ingresando…' : 'Entrar' }}
+                    </button>
+                  </c-col>
+                  <c-col class="text-end" xs="6">
+                    <button cButton class="px-0" color="link">
+                      ¿Olvidaste tu contraseña?
+                    </button>
+                  </c-col>
+                </c-row>
+              </form>
+            </c-card-body>
+          </c-card>
+          <c-card [style.minWidth.%]="44" class="text-white bg-primary py-5">
+            <c-card-body class="text-center">
+              <div>
+                <h2>Crear cuenta</h2>
+                <p>
+                  Crea una cuenta para acceder al CRM y gestionar pacientes, citas, documentos y ventas.
+                </p>
+                <button [active]="true" cButton class="mt-3" color="primary" routerLink="/register">
+                  Registrarme
+                </button>
+              </div>
+            </c-card-body>
+          </c-card>
+        </c-card-group>
+      </c-col>
+    </c-row>
+  </c-container>
+</div>
