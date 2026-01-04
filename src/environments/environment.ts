@@ -1,5 +1,5 @@
 export const environment = {
   production: false,
-  apiBaseUrl: 'http://127.0.0.1/backend/api/v1',
+  apiBaseUrl: 'http://localhost/backend/api/v1',
   httpMethodOverride: false
 } as const;

@@ -21,6 +21,8 @@ require_once __DIR__ . '/../app/Controllers/UpdatesController.php';
 require_once __DIR__ . '/../app/Controllers/ConversationsController.php';
 require_once __DIR__ . '/../app/Controllers/TasksController.php';
 require_once __DIR__ . '/../app/Controllers/CommentsController.php';
+require_once __DIR__ . '/../app/Controllers/ReportController.php';
+require_once __DIR__ . '/../app/Controllers/TwoFactorController.php';
 
 use App\Controllers\AuthController;
 use App\Controllers\ClienteController;
@@ -38,13 +40,44 @@ use App\Controllers\StaffMembersController;
 use App\Controllers\UpdatesController;
 use App\Controllers\ConversationsController;
 use App\Controllers\TasksController;
+use App\Controllers\ReportController;
 use App\Controllers\CommentsController;
+use App\Controllers\TwoFactorController;
 
 $base = '/api/v1';
 
 // Auth
 if ($uri === "$base/auth/login" && $method === 'POST') {
     (new AuthController())->login();
+}
+
+if ($uri === "$base/auth/verify-2fa" && $method === 'POST') {
+    (new AuthController())->verify2FA();
+}
+
+// 2FA Management (require authentication)
+if ($uri === "$base/2fa/status" && $method === 'GET') {
+    (new TwoFactorController())->getStatus();
+}
+
+if ($uri === "$base/2fa/methods" && $method === 'GET') {
+    (new TwoFactorController())->getMethods();
+}
+
+if ($uri === "$base/2fa/enable" && $method === 'POST') {
+    (new TwoFactorController())->enable();
+}
+
+if ($uri === "$base/2fa/disable" && $method === 'POST') {
+    (new TwoFactorController())->disable();
+}
+
+if ($uri === "$base/2fa/test" && $method === 'POST') {
+    (new TwoFactorController())->testCode();
+}
+
+if ($uri === "$base/2fa/regenerate-backup-codes" && $method === 'POST') {
+    (new TwoFactorController())->regenerateBackupCodes();
 }
 
 if ($uri === "$base/auth/register" && $method === 'POST') {
@@ -184,6 +217,13 @@ if (preg_match("#^$baseQuoted/comments(?:/(\\d+))?(?:/([a-z-]+))?$#", $uri, $m))
     $id = $m[1] ?? null;
     $action = $m[2] ?? null;
     (new CommentsController())->handle($id, $action);
+}
+
+// Reports (Exports with audit logging and role restrictions)
+if (preg_match("#^$baseQuoted/reports(?:/([a-z-]+))?(?:/([a-z]+))?$#", $uri, $m)) {
+    $action = $m[1] ?? null;
+    $format = $m[2] ?? null;
+    (new ReportController())->handle($action, $format);
 }
 
 \App\Core\Response::error('Endpoint no encontrado', 404);

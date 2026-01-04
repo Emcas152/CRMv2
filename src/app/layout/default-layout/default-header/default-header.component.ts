@@ -1,5 +1,5 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, computed, inject, input } from '@angular/core';
+import { Component, computed, inject, input, OnInit } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 
 import {
@@ -27,6 +27,8 @@ import { IconDirective } from '@coreui/icons-angular';
 import { Router } from '@angular/router';
 import { AuthService } from '../../../core/auth/auth.service';
 import { firstValueFrom } from 'rxjs';
+import { ConversationsService } from '../../../core/services/conversations.service';
+import { UpdatesService } from '../../../core/services/updates.service';
 
 @Component({
   selector: 'app-default-header',
@@ -55,6 +57,12 @@ export class DefaultHeaderComponent extends HeaderComponent {
 
   readonly #auth = inject(AuthService);
   readonly #router = inject(Router);
+  readonly #conversations = inject(ConversationsService);
+  readonly #updates = inject(UpdatesService);
+
+  updatesCount = 0;
+  unreadMessagesCount = 0;
+  isBadgeLoading = false;
 
   async onLogout(): Promise<void> {
     try {
@@ -64,68 +72,41 @@ export class DefaultHeaderComponent extends HeaderComponent {
     }
   }
 
+  async ngOnInit(): Promise<void> {
+    await this.refreshBadges();
+  }
+
+  async refreshBadges(): Promise<void> {
+    if (this.isBadgeLoading) return;
+    this.isBadgeLoading = true;
+
+    try {
+      // Updates: total visible to current user
+      const updatesRes = await firstValueFrom(this.#updates.list());
+      this.updatesCount = Number(updatesRes?.total ?? 0) || 0;
+    } catch {
+      this.updatesCount = 0;
+    }
+
+    try {
+      // Conversations: sum unread_count across conversations
+      const convRes = await firstValueFrom(this.#conversations.list());
+      const items = Array.isArray(convRes?.data) ? convRes.data : [];
+      this.unreadMessagesCount = items.reduce((acc, it) => {
+        const n = typeof it.unread_count === 'string' ? parseInt(it.unread_count, 10) : Number(it.unread_count ?? 0);
+        return acc + (Number.isFinite(n) ? n : 0);
+      }, 0);
+    } catch {
+      this.unreadMessagesCount = 0;
+    } finally {
+      this.isBadgeLoading = false;
+    }
+  }
+
   sidebarId = input('sidebar1');
 
-  public newMessages = [
-    {
-      id: 0,
-      from: 'Jessica Williams',
-      avatar: '7.jpg',
-      status: 'success',
-      title: 'Urgent: System Maintenance Tonight',
-      time: 'Just now',
-      link: 'apps/email/inbox/message',
-      message: 'Attention team, we\'ll be conducting critical system maintenance tonight from 10 PM to 2 AM. Plan accordingly...'
-    },
-    {
-      id: 1,
-      from: 'Richard Johnson',
-      avatar: '6.jpg',
-      status: 'warning',
-      title: 'Project Update: Milestone Achieved',
-      time: '5 minutes ago',
-      link: 'apps/email/inbox/message',
-      message: 'Kudos on hitting sales targets last quarter! Let\'s keep the momentum. New goals, new victories ahead...'
-    },
-    {
-      id: 2,
-      from: 'Angela Rodriguez',
-      avatar: '5.jpg',
-      status: 'danger',
-      title: 'Social Media Campaign Launch',
-      time: '1:52 PM',
-      link: 'apps/email/inbox/message',
-      message: 'Exciting news! Our new social media campaign goes live tomorrow. Brace yourselves for engagement...'
-    },
-    {
-      id: 3,
-      from: 'Jane Lewis',
-      avatar: '4.jpg',
-      status: 'info',
-      title: 'Inventory Checkpoint',
-      time: '4:03 AM',
-      link: 'apps/email/inbox/message',
-      message: 'Team, it\'s time for our monthly inventory check. Accurate counts ensure smooth operations. Let\'s nail it...'
-    },
-    {
-      id: 4,
-      from: 'Ryan Miller',
-      avatar: '3.jpg',
-      status: 'info',
-      title: 'Customer Feedback Results',
-      time: '3 days ago',
-      link: 'apps/email/inbox/message',
-      message: 'Our latest customer feedback is in. Let\'s analyze and discuss improvements for an even better service...'
-    }
-  ];
-
-  public newNotifications = [
-    { id: 0, title: 'New user registered', icon: 'cilUserFollow', color: 'success' },
-    { id: 1, title: 'User deleted', icon: 'cilUserUnfollow', color: 'danger' },
-    { id: 2, title: 'Sales report is ready', icon: 'cilChartPie', color: 'info' },
-    { id: 3, title: 'New client', icon: 'cilBasket', color: 'primary' },
-    { id: 4, title: 'Server overloaded', icon: 'cilSpeedometer', color: 'warning' }
-  ];
+  // The template originally included mock arrays for dropdowns.
+  // In this CRM build we use real API counts in the user dropdown instead.
 
   public newStatus = [
     { id: 0, title: 'CPU Usage', value: 25, color: 'info', details: '348 Processes. 1/4 Cores.' },

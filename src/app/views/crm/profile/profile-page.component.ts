@@ -17,6 +17,8 @@ import {
 } from '@coreui/angular';
 
 import { ProfileService } from '../../../core/services/profile.service';
+import { PatientsService } from '../../../core/services/patients.service';
+import * as QRCode from 'qrcode';
 
 @Component({
   selector: 'app-crm-profile-page',
@@ -39,6 +41,7 @@ import { ProfileService } from '../../../core/services/profile.service';
 })
 export class ProfilePageComponent implements OnInit {
   readonly #profile = inject(ProfileService);
+  readonly #patients = inject(PatientsService);
   readonly #fb = inject(FormBuilder);
 
   isLoading = false;
@@ -46,6 +49,10 @@ export class ProfilePageComponent implements OnInit {
   error: string | null = null;
   info: string | null = null;
   profile: any = null;
+
+  qrCodeText: string | null = null;
+  qrDataUrl: string | null = null;
+  isLoadingQr = false;
 
   selectedPhoto: File | null = null;
 
@@ -76,10 +83,44 @@ export class ProfilePageComponent implements OnInit {
       const name = typeof user?.name === 'string' ? user.name : '';
       const email = typeof user?.email === 'string' ? user.email : '';
       this.updateForm.reset({ name, email });
+
+      // If this user is linked to a patient record, load QR
+      const patientId = Number(this.profile?.patient?.id ?? 0) || 0;
+      if (patientId > 0) {
+        await this.loadQr(patientId);
+      } else {
+        this.qrCodeText = null;
+        this.qrDataUrl = null;
+      }
     } catch (err: any) {
       this.error = this.#formatError(err);
     } finally {
       this.isLoading = false;
+    }
+  }
+
+  async loadQr(patientId?: number): Promise<void> {
+    const pid = Number(patientId ?? this.profile?.patient?.id ?? 0) || 0;
+    if (!pid || this.isLoadingQr) return;
+    this.isLoadingQr = true;
+    this.error = null;
+
+    try {
+      const qr = await firstValueFrom(this.#patients.getQr(pid));
+      this.qrCodeText = qr?.qr_code ?? null;
+      if (this.qrCodeText) {
+        this.qrDataUrl = await QRCode.toDataURL(this.qrCodeText, { margin: 1, width: 280 });
+      } else {
+        this.qrDataUrl = null;
+      }
+    } catch (err: any) {
+      // Do not hard-fail the whole profile page if QR fails
+      const msg = err?.error?.message ?? err?.message;
+      this.error = typeof msg === 'string' && msg.trim().length ? msg : 'No se pudo cargar el QR.';
+      this.qrCodeText = null;
+      this.qrDataUrl = null;
+    } finally {
+      this.isLoadingQr = false;
     }
   }
 

@@ -5,6 +5,27 @@ class DocumentsController
 {
     private const API_BASE = '/api/v1';
 
+    private function canAccessPatient($user, int $patientId, $db): bool
+    {
+        $role = (string)($user['role'] ?? '');
+        if (in_array($role, ['superadmin', 'admin', 'staff', 'doctor'], true)) {
+            return true;
+        }
+
+        if ($role !== 'patient') {
+            return false;
+        }
+
+        $patient = $db->fetchOne('SELECT id, user_id, email FROM patients WHERE id = ? LIMIT 1', [$patientId]);
+        if (!$patient) {
+            return false;
+        }
+
+        $owns = (!empty($patient['user_id']) && intval($patient['user_id']) === intval($user['user_id'] ?? 0))
+            || (!empty($patient['email']) && ($user['email'] ?? null) === $patient['email']);
+        return $owns;
+    }
+
     protected static function initCore()
     {
         require_once __DIR__ . '/../Core/helpers.php';
@@ -71,7 +92,7 @@ class DocumentsController
             \App\Core\Response::validationError(['patient_id' => 'Se requiere patient_id']);
         }
 
-        if (!in_array($user['role'], ['superadmin', 'admin', 'staff', 'doctor']) && intval($user['user_id']) !== intval($patientId)) {
+        if (!$this->canAccessPatient($user, intval($patientId), $db)) {
             \App\Core\Response::forbidden('No tienes permisos para ver estos documentos');
         }
 
@@ -93,7 +114,7 @@ class DocumentsController
             \App\Core\Response::validationError(['patient_id' => 'Se requiere patient_id']);
         }
 
-        if (!in_array($user['role'], ['superadmin', 'admin', 'staff', 'doctor']) && intval($user['user_id']) !== intval($postPatientId)) {
+        if (!$this->canAccessPatient($user, intval($postPatientId), $db)) {
             \App\Core\Response::forbidden('No tienes permisos para subir documentos para este paciente');
         }
 
@@ -140,7 +161,7 @@ class DocumentsController
             \App\Core\Response::notFound('Documento no encontrado');
         }
 
-        if (!in_array($user['role'], ['superadmin', 'admin', 'staff', 'doctor']) && intval($user['user_id']) !== intval($doc['patient_id'])) {
+        if (!$this->canAccessPatient($user, intval($doc['patient_id']), $db)) {
             \App\Core\Response::forbidden('No tienes permisos para descargar este documento');
         }
 
@@ -190,7 +211,7 @@ class DocumentsController
             \App\Core\Response::notFound('Documento no encontrado');
         }
 
-        if (!in_array($user['role'], ['superadmin', 'admin', 'staff', 'doctor']) && intval($user['user_id']) !== intval($doc['patient_id'])) {
+        if (!$this->canAccessPatient($user, intval($doc['patient_id']), $db)) {
             \App\Core\Response::forbidden('No tienes permisos para ver este documento');
         }
 
@@ -271,7 +292,7 @@ class DocumentsController
             \App\Core\Response::notFound('Documento no encontrado');
         }
 
-        if (!in_array($user['role'], ['superadmin', 'admin', 'staff', 'doctor']) && intval($user['user_id']) !== intval($doc['patient_id'])) {
+        if (!$this->canAccessPatient($user, intval($doc['patient_id']), $db)) {
             \App\Core\Response::forbidden('No tienes permisos para ver este documento');
         }
 
@@ -311,7 +332,7 @@ class DocumentsController
             \App\Core\Response::notFound('Documento no encontrado');
         }
 
-        if (!in_array($user['role'], ['superadmin', 'admin', 'staff', 'doctor', 'patient'])) {
+        if (!$this->canAccessPatient($user, intval($doc['patient_id']), $db)) {
             \App\Core\Response::forbidden('No tienes permisos para firmar este documento');
         }
 

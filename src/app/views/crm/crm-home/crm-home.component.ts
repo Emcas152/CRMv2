@@ -62,7 +62,9 @@ export class CrmHomeComponent implements OnInit {
 
   ngOnInit(): void {
     this.deniedRoles = this.#route.snapshot.queryParamMap.get('denied');
-    void this.load();
+    // Avoid NG0100 (ExpressionChangedAfterItHasBeenCheckedError) in dev mode
+    // when data observables can resolve synchronously during the first CD pass.
+    queueMicrotask(() => void this.load());
   }
 
   async load(): Promise<void> {

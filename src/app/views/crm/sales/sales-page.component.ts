@@ -1,4 +1,4 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, ElementRef, OnDestroy, OnInit, ViewChild, inject } from '@angular/core';
 import { FormArray, FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 
@@ -17,8 +17,12 @@ import {
   TableDirective
 } from '@coreui/angular';
 
+import { BrowserQRCodeReader, IScannerControls } from '@zxing/browser';
+
 import { CreateSaleRequest, Sale, SalesService, UpdateSaleRequest } from '../../../core/services/sales.service';
 import { Id, PaymentMethod } from '../../../core/services/api.models';
+import { QrService } from '../../../core/services/qr.service';
+import { PatientsService } from '../../../core/services/patients.service';
 
 @Component({
   selector: 'app-crm-sales-page',
@@ -40,9 +44,15 @@ import { Id, PaymentMethod } from '../../../core/services/api.models';
     FormSelectDirective
   ]
 })
-export class SalesPageComponent implements OnInit {
+export class SalesPageComponent implements OnInit, OnDestroy {
   readonly #sales = inject(SalesService);
   readonly #fb = inject(FormBuilder);
+  readonly #qr = inject(QrService);
+  readonly #patients = inject(PatientsService);
+
+  @ViewChild('saleVideoEl') saleVideoEl?: ElementRef<HTMLVideoElement>;
+  readonly #reader = new BrowserQRCodeReader();
+  #scannerControls: IScannerControls | null = null;
 
   isLoading = false;
   error: string | null = null;
@@ -56,6 +66,11 @@ export class SalesPageComponent implements OnInit {
   isSaving = false;
   editingId: Id | null = null;
   readonly paymentMethods: PaymentMethod[] = ['cash', 'card', 'transfer', 'other'];
+
+  // QR / loyalty
+  isCameraActive = false;
+  cameraError: string | null = null;
+  scannedQrCode: string | null = null;
 
   readonly filterForm = this.#fb.nonNullable.group({
     patient_id: [0],
@@ -73,6 +88,7 @@ export class SalesPageComponent implements OnInit {
     discount: [0],
     notes: [''],
     status: [''],
+    loyalty_points: [0],
     items: this.#fb.array([this.#createItemGroup()]) as any
   });
 
@@ -99,6 +115,61 @@ export class SalesPageComponent implements OnInit {
 
   ngOnInit(): void {
     void this.refresh();
+  }
+
+  ngOnDestroy(): void {
+    this.stopCamera();
+  }
+
+  async startCamera(): Promise<void> {
+    if (this.isCameraActive) return;
+    this.cameraError = null;
+    const video = this.saleVideoEl?.nativeElement;
+    if (!video) {
+      this.cameraError = 'No se encontró el elemento de video.';
+      return;
+    }
+
+    try {
+      this.isCameraActive = true;
+      this.#scannerControls = await this.#reader.decodeFromVideoDevice(undefined, video, (result) => {
+        if (!result) return;
+        const text = result.getText();
+        if (!text) return;
+
+        this.stopCamera();
+        this.scannedQrCode = text;
+        void this.resolvePatientFromQr(text);
+      });
+    } catch (e: any) {
+      this.isCameraActive = false;
+      this.#scannerControls = null;
+      const msg = e?.message;
+      this.cameraError = typeof msg === 'string' && msg.trim().length ? msg : 'No se pudo iniciar la cámara.';
+    }
+  }
+
+  stopCamera(): void {
+    try {
+      this.#scannerControls?.stop();
+    } catch {
+      // ignore
+    }
+    this.#scannerControls = null;
+    this.isCameraActive = false;
+  }
+
+  async resolvePatientFromQr(qrCode: string): Promise<void> {
+    this.submitError = null;
+    try {
+      const patient: any = await firstValueFrom(this.#qr.scan({ qr_code: qrCode, action: 'none' }));
+      const pid = Number(patient?.id ?? 0) || 0;
+      if (pid > 0) {
+        this.form.controls.patient_id.setValue(pid as any);
+      }
+    } catch (err: any) {
+      this.submitError = this.#formatError(err);
+    }
   }
 
   async refresh(): Promise<void> {
@@ -147,12 +218,15 @@ export class SalesPageComponent implements OnInit {
   startCreate(): void {
     this.editingId = null;
     this.submitError = null;
+    this.cameraError = null;
+    this.scannedQrCode = null;
     this.form.reset({
       patient_id: 0,
       payment_method: 'cash',
       discount: 0,
       notes: '',
-      status: ''
+      status: '',
+      loyalty_points: 0
     });
 
     this.itemsArray.clear();
@@ -204,9 +278,13 @@ export class SalesPageComponent implements OnInit {
           payment_method: raw.payment_method,
           discount: Number(raw.discount) || 0,
           notes: raw.notes.trim() || undefined,
+          loyalty_points: Number((raw as any).loyalty_points) || 0,
           items
         };
-        await firstValueFrom(this.#sales.create(payload));
+        const created = await firstValueFrom(this.#sales.create(payload));
+        const awarded = Number((created as any)?.loyalty_points_awarded) || Number((raw as any).loyalty_points) || 0;
+        if (awarded > 0) this.actionInfo = `Puntos acumulados: ${awarded}`;
+
         this.startCreate();
       } else {
         const payload: UpdateSaleRequest = {

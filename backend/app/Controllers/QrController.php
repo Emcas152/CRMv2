@@ -35,6 +35,9 @@ class QrController
 
     private function scan()
     {
+        // QR is part of operations; require authentication
+        \App\Core\Auth::requireAuth();
+
         $input = Request::body();
 
         $qr = $input['qr_code'] ?? ($_GET['qr'] ?? null);
@@ -43,7 +46,7 @@ class QrController
         }
 
         $db = \App\Core\Database::getInstance();
-        $user = \App\Core\Auth::getCurrentUser(); // puede ser false si no hay token
+        $user = \App\Core\Auth::getCurrentUser();
 
         $patient = $db->fetchOne('SELECT * FROM patients WHERE qr_code = ? LIMIT 1', [$qr]);
         if (!$patient) {
@@ -52,6 +55,11 @@ class QrController
 
         $action = $input['action'] ?? 'none';
         $points = isset($input['points']) ? intval($input['points']) : 0;
+
+        // Mutating actions restricted to ops roles
+        if (in_array($action, ['add', 'redeem'], true)) {
+            \App\Core\Auth::requireAnyRole(['superadmin', 'admin', 'doctor', 'staff'], 'No tienes permisos para modificar puntos por QR');
+        }
 
         try {
             if ($action === 'add') {

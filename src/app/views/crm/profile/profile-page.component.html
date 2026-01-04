@@ -76,6 +76,24 @@
           </div>
         </div>
 
+        @if (profile?.patient?.id) {
+          <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <strong>Mi QR (paciente)</strong>
+              <button cButton color="secondary" type="button" (click)="loadQr()" [disabled]="isLoadingQr">
+                {{ isLoadingQr ? 'Cargando…' : 'Refrescar QR' }}
+              </button>
+            </div>
+
+            @if (qrDataUrl) {
+              <img [src]="qrDataUrl" alt="QR" style="max-width: 280px; width: 100%; height: auto;" />
+              <div class="small text-body-secondary mt-2">Código: {{ qrCodeText }}</div>
+            } @else {
+              <div class="text-body-secondary small">No hay QR disponible.</div>
+            }
+          </div>
+        }
+
         <pre class="mb-0">{{ profile | json }}</pre>
       </c-card-body>
     </c-card>

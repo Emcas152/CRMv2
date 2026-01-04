@@ -16,10 +16,13 @@ export interface SaleItem {
 export interface Sale {
   id: Id;
   patient_id: Id;
+  subtotal?: number;
+  total?: number;
   status?: string;
   payment_method: PaymentMethod;
   discount?: number | null;
   notes?: string | null;
+  loyalty_points_awarded?: number;
   items: SaleItem[];
   created_at?: string;
 }
@@ -41,6 +44,7 @@ export interface CreateSaleRequest {
   payment_method: PaymentMethod;
   discount?: number;
   notes?: string;
+  loyalty_points?: number;
   items: SaleItem[];
 }
 

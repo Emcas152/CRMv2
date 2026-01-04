@@ -113,16 +113,20 @@ CREATE TABLE IF NOT EXISTS appointments (
 CREATE TABLE IF NOT EXISTS sales (
     id INT AUTO_INCREMENT PRIMARY KEY,
     patient_id INT NOT NULL,
+    created_by INT NULL,
     subtotal DECIMAL(10,2) NOT NULL DEFAULT 0,
     discount DECIMAL(10,2) NOT NULL DEFAULT 0,
     total DECIMAL(10,2) NOT NULL,
+    loyalty_points_awarded INT NOT NULL DEFAULT 0,
     payment_method ENUM('cash', 'card', 'transfer', 'other') DEFAULT 'cash',
     status ENUM('pending', 'completed', 'cancelled') DEFAULT 'completed',
     notes TEXT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_sales_patient_id FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+    CONSTRAINT fk_sales_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
     INDEX idx_sales_patient_id (patient_id),
+    INDEX idx_sales_created_by (created_by),
     INDEX idx_sales_created_at (created_at),
     INDEX idx_sales_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -216,7 +220,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 -- =========================
 CREATE TABLE IF NOT EXISTS patient_photos (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    patient_id BIGINT NOT NULL,
+    patient_id INT NOT NULL,
     type VARCHAR(50) NOT NULL,
     filename VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -230,13 +234,13 @@ CREATE TABLE IF NOT EXISTS patient_photos (
 -- =========================
 CREATE TABLE IF NOT EXISTS updates (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    created_by BIGINT NOT NULL,
+    created_by INT NOT NULL,
     title VARCHAR(255) NOT NULL,
     body TEXT NOT NULL,
     audience_type ENUM('all', 'role', 'user', 'patient') NOT NULL DEFAULT 'all',
     audience_role ENUM('superadmin', 'admin', 'doctor', 'staff', 'patient') NULL,
-    audience_user_id BIGINT NULL,
-    patient_id BIGINT NULL,
+    audience_user_id INT NULL,
+    patient_id INT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_updates_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
@@ -256,7 +260,7 @@ CREATE TABLE IF NOT EXISTS updates (
 CREATE TABLE IF NOT EXISTS conversations (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     subject VARCHAR(255) NULL,
-    created_by BIGINT NOT NULL,
+    created_by INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_conversations_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_conversations_created_by (created_by),
@@ -265,7 +269,7 @@ CREATE TABLE IF NOT EXISTS conversations (
 
 CREATE TABLE IF NOT EXISTS conversation_participants (
     conversation_id BIGINT NOT NULL,
-    user_id BIGINT NOT NULL,
+    user_id INT NOT NULL,
     last_read_at DATETIME NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (conversation_id, user_id),
@@ -278,7 +282,7 @@ CREATE TABLE IF NOT EXISTS conversation_participants (
 CREATE TABLE IF NOT EXISTS messages (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     conversation_id BIGINT NOT NULL,
-    sender_user_id BIGINT NOT NULL,
+    sender_user_id INT NOT NULL,
     body TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_messages_conversation FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
@@ -293,9 +297,9 @@ CREATE TABLE IF NOT EXISTS messages (
 -- =========================
 CREATE TABLE IF NOT EXISTS tasks (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    created_by BIGINT NOT NULL,
-    assigned_to_user_id BIGINT NULL,
-    related_patient_id BIGINT NULL,
+    created_by INT NOT NULL,
+    assigned_to_user_id INT NULL,
+    related_patient_id INT NULL,
     title VARCHAR(255) NOT NULL,
     description TEXT NULL,
     status ENUM('open', 'in_progress', 'done', 'cancelled') NOT NULL DEFAULT 'open',
@@ -322,7 +326,7 @@ CREATE TABLE IF NOT EXISTS comments (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     entity_type VARCHAR(50) NOT NULL,
     entity_id BIGINT NOT NULL,
-    author_user_id BIGINT NOT NULL,
+    author_user_id INT NOT NULL,
     body TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

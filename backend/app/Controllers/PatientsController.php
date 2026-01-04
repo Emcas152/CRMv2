@@ -15,6 +15,7 @@ class PatientsController {
         require_once __DIR__ . '/../Core/ErrorHandler.php';
         require_once __DIR__ . '/../Core/Mailer.php';
         require_once __DIR__ . '/../Core/Audit.php';
+        require_once __DIR__ . '/../Core/FieldEncryption.php';
     }
 
     public function handle($id = null, $action = null) {
@@ -67,6 +68,29 @@ class PatientsController {
         $user = \App\Core\Auth::getCurrentUser();
         $db = \App\Core\Database::getInstance();
 
+        // Operational access (staff/doctor/admin/superadmin). Patients can only see themselves.
+        if (($user['role'] ?? null) === 'patient') {
+            $own = $db->fetchOne('SELECT * FROM patients WHERE user_id = ? OR email = ? LIMIT 1', [
+                intval($user['user_id'] ?? 0),
+                (string)($user['email'] ?? ''),
+            ]);
+            $data = $own ? [$own] : [];
+            
+            // Desencriptar
+            foreach ($data as &$patient) {
+                if (!empty($patient['email_encrypted'])) {
+                    try { $patient['email'] = \App\Core\FieldEncryption::decryptValue($patient['email_encrypted']); } catch (\Exception $e) {}
+                }
+                if (!empty($patient['phone_encrypted'])) {
+                    try { $patient['phone'] = \App\Core\FieldEncryption::decryptValue($patient['phone_encrypted']); } catch (\Exception $e) {}
+                }
+            }
+            
+            \App\Core\Response::success(['data' => $data, 'total' => count($data)]);
+        }
+
+        \App\Core\Auth::requireAnyRole(['superadmin', 'admin', 'doctor', 'staff'], 'No tienes permisos para ver pacientes');
+
         $query = 'SELECT * FROM patients WHERE 1=1';
         $params = [];
 
@@ -92,6 +116,17 @@ class PatientsController {
 
         $query .= ' ORDER BY created_at DESC LIMIT 20';
         $patients = $db->fetchAll($query, $params);
+        
+        // Desencriptar
+        foreach ($patients as &$patient) {
+            if (!empty($patient['email_encrypted'])) {
+                try { $patient['email'] = \App\Core\FieldEncryption::decryptValue($patient['email_encrypted']); } catch (\Exception $e) {}
+            }
+            if (!empty($patient['phone_encrypted'])) {
+                try { $patient['phone'] = \App\Core\FieldEncryption::decryptValue($patient['phone_encrypted']); } catch (\Exception $e) {}
+            }
+        }
+        
         \App\Core\Response::success(['data' => $patients, 'total' => count($patients)]);
     }
 
@@ -103,12 +138,40 @@ class PatientsController {
         $patient = $db->fetchOne('SELECT * FROM patients WHERE id = ?', [$id]);
         if (!$patient) { \App\Core\Response::notFound('Paciente no encontrado'); }
 
+        // Patients can only access their own record
+        if (($user['role'] ?? null) === 'patient') {
+            $owns = (isset($patient['user_id']) && intval($patient['user_id']) === intval($user['user_id'] ?? 0))
+                || (!empty($patient['email']) && ($user['email'] ?? null) === $patient['email']);
+            if (!$owns) {
+                \App\Core\Response::forbidden('No tienes acceso a este paciente');
+            }
+        } else {
+            \App\Core\Auth::requireAnyRole(['superadmin', 'admin', 'doctor', 'staff'], 'No tienes permisos para ver pacientes');
+        }
+
         if ($user['role'] === 'doctor') {
             $staffMember = $db->fetchOne('SELECT id FROM staff_members WHERE user_id = ?', [$user['user_id']]);
             if ($staffMember) {
                 $hasAccess = $db->fetchOne('SELECT id FROM appointments WHERE patient_id = ? AND staff_member_id = ? LIMIT 1', [$id, $staffMember['id']]);
                 if (!$hasAccess) { \App\Core\Response::forbidden('No tienes acceso a este paciente'); }
             } else { \App\Core\Response::forbidden('No tienes acceso a este paciente'); }
+        }
+
+        // Desencriptar email y phone si existen
+        if (!empty($patient['email_encrypted'])) {
+            try {
+                $patient['email'] = \App\Core\FieldEncryption::decryptValue($patient['email_encrypted']);
+            } catch (\Exception $e) {
+                error_log("Error desencriptando email del paciente {$id}: " . $e->getMessage());
+            }
+        }
+
+        if (!empty($patient['phone_encrypted'])) {
+            try {
+                $patient['phone'] = \App\Core\FieldEncryption::decryptValue($patient['phone_encrypted']);
+            } catch (\Exception $e) {
+                error_log("Error desencriptando phone del paciente {$id}: " . $e->getMessage());
+            }
         }
 
         \App\Core\Response::success($patient);
@@ -157,7 +220,9 @@ class PatientsController {
         $user = \App\Core\Auth::getCurrentUser();
         $db = \App\Core\Database::getInstance();
 
-        if (!in_array($user['role'], ['superadmin','admin'])) { \App\Core\Response::forbidden('No tienes permisos para crear pacientes'); }
+        if (!in_array($user['role'], ['superadmin', 'admin', 'doctor', 'staff'], true)) {
+            \App\Core\Response::forbidden('No tienes permisos para crear pacientes');
+        }
 
         $validator = \App\Core\Validator::make($input, [
             'name' => 'required|string|max:255',
@@ -170,16 +235,53 @@ class PatientsController {
 
         try { $validator->validate(); } catch (\Exception $e) { \App\Core\Response::validationError([$e->getMessage()]); }
 
-        $existing = $db->fetchOne('SELECT id FROM patients WHERE email = ?', [$input['email']]);
+        $existing = $db->fetchOne('SELECT id FROM patients WHERE email = ? AND id != ?', [$input['email'], $id]);
         if ($existing) { \App\Core\Response::error('El email ya está registrado', 422); }
 
         try {
             try { $db->execute("ALTER TABLE patients ADD COLUMN IF NOT EXISTS nit VARCHAR(100) NULL", []); } catch (\Exception $e) {}
-            $db->execute('INSERT INTO patients (name, email, phone, birthday, address, nit, loyalty_points, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, NOW(), NOW())', [
-                $input['name'], $input['email'], $input['phone'] ?? null, $input['birthday'] ?? null, $input['address'] ?? null, $input['nit'] ?? null
+            
+            // Validar y encriptar email y phone
+            $encryptedData = [];
+            if (isset($input['email'])) {
+                if (!\App\Core\FieldEncryption::validateValue($input['email'], \App\Core\FieldEncryption::TYPE_EMAIL)) {
+                    \App\Core\Response::validationError(['email' => 'Email inválido']);
+                }
+                $encryptedData['email_encrypted'] = \App\Core\FieldEncryption::encryptValue($input['email']);
+                $encryptedData['email_hash'] = \App\Core\FieldEncryption::hashValue($input['email']);
+            }
+            
+            if (isset($input['phone'])) {
+                if (!\App\Core\FieldEncryption::validateValue($input['phone'], \App\Core\FieldEncryption::TYPE_PHONE)) {
+                    \App\Core\Response::validationError(['phone' => 'Teléfono inválido']);
+                }
+                $encryptedData['phone_encrypted'] = \App\Core\FieldEncryption::encryptValue($input['phone']);
+                $encryptedData['phone_hash'] = \App\Core\FieldEncryption::hashValue($input['phone']);
+            }
+            
+            $db->execute('INSERT INTO patients (name, email, email_encrypted, email_hash, phone, phone_encrypted, phone_hash, birthday, address, nit, loyalty_points, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW(), NOW())', [
+                $input['name'], 
+                $input['email'],
+                $encryptedData['email_encrypted'] ?? null,
+                $encryptedData['email_hash'] ?? null,
+                $input['phone'] ?? null, 
+                $encryptedData['phone_encrypted'] ?? null,
+                $encryptedData['phone_hash'] ?? null,
+                $input['birthday'] ?? null, 
+                $input['address'] ?? null, 
+                $input['nit'] ?? null
             ]);
             $patientId = $db->lastInsertId();
             $patient = $db->fetchOne('SELECT * FROM patients WHERE id = ?', [$patientId]);
+            
+            // Desencriptar para respuesta
+            if (!empty($patient['email_encrypted'])) {
+                $patient['email'] = \App\Core\FieldEncryption::decryptValue($patient['email_encrypted']);
+            }
+            if (!empty($patient['phone_encrypted'])) {
+                $patient['phone'] = \App\Core\FieldEncryption::decryptValue($patient['phone_encrypted']);
+            }
+            
             if (class_exists('\App\Core\Audit')) { \App\Core\Audit::log('create_patient','patient',$patientId,['name'=>$input['name'],'email'=>$input['email']]); }
             \App\Core\Response::success($patient, 'Paciente creado exitosamente', 201);
         } catch (\Exception $e) {
@@ -188,8 +290,8 @@ class PatientsController {
     }
 
     private function update($id, $input) {
-        // Solo admin y superadmin pueden editar pacientes
-        \App\Core\Auth::requireRole('admin');
+        // Staff/doctor can operate patients; superadmin bypasses. (Delete remains admin-only.)
+        \App\Core\Auth::requireAnyRole(['superadmin', 'admin', 'doctor', 'staff'], 'No tienes permisos para editar pacientes');
         $db = \App\Core\Database::getInstance();
 
         $patient = $db->fetchOne('SELECT * FROM patients WHERE id = ?', [$id]);
@@ -203,14 +305,56 @@ class PatientsController {
 
         try {
             $updates = []; $params = [];
-            foreach (['name','email','phone','birthday','address','nit'] as $f) {
+            
+            // Encriptar email si se proporciona
+            if (isset($input['email'])) {
+                if (!\App\Core\FieldEncryption::validateValue($input['email'], \App\Core\FieldEncryption::TYPE_EMAIL)) {
+                    \App\Core\Response::validationError(['email' => 'Email inválido']);
+                }
+                $updates[] = 'email = ?';
+                $params[] = $input['email'];
+                $updates[] = 'email_encrypted = ?';
+                $params[] = \App\Core\FieldEncryption::encryptValue($input['email']);
+                $updates[] = 'email_hash = ?';
+                $params[] = \App\Core\FieldEncryption::hashValue($input['email']);
+            }
+            
+            // Encriptar phone si se proporciona
+            if (isset($input['phone'])) {
+                if (!\App\Core\FieldEncryption::validateValue($input['phone'], \App\Core\FieldEncryption::TYPE_PHONE)) {
+                    \App\Core\Response::validationError(['phone' => 'Teléfono inválido']);
+                }
+                $updates[] = 'phone = ?';
+                $params[] = $input['phone'];
+                $updates[] = 'phone_encrypted = ?';
+                $params[] = \App\Core\FieldEncryption::encryptValue($input['phone']);
+                $updates[] = 'phone_hash = ?';
+                $params[] = \App\Core\FieldEncryption::hashValue($input['phone']);
+            }
+            
+            // Procesar otros campos
+            foreach (['name','birthday','address','nit'] as $f) {
                 if (isset($input[$f])) { $updates[] = "$f = ?"; $params[] = $input[$f]; }
             }
+            
+            if (empty($updates)) {
+                \App\Core\Response::success($patient, 'Sin cambios');
+            }
+            
             $updates[] = 'updated_at = NOW()';
             $params[] = $id;
             $query = 'UPDATE patients SET ' . implode(', ', $updates) . ' WHERE id = ?';
             $db->execute($query, $params);
             $patient = $db->fetchOne('SELECT * FROM patients WHERE id = ?', [$id]);
+            
+            // Desencriptar para respuesta
+            if (!empty($patient['email_encrypted'])) {
+                $patient['email'] = \App\Core\FieldEncryption::decryptValue($patient['email_encrypted']);
+            }
+            if (!empty($patient['phone_encrypted'])) {
+                $patient['phone'] = \App\Core\FieldEncryption::decryptValue($patient['phone_encrypted']);
+            }
+            
             if (class_exists('\App\Core\Audit')) { \App\Core\Audit::log('update_patient','patient',$id,['updates'=>$updates]); }
             \App\Core\Response::success($patient, 'Paciente actualizado exitosamente');
         } catch (\Exception $e) {
@@ -219,7 +363,8 @@ class PatientsController {
     }
 
     private function destroy($id) {
-        \App\Core\Auth::requireRole('admin');
+        // Destructive action stays restricted to admin/superadmin
+        \App\Core\Auth::requireAnyRole(['superadmin', 'admin'], 'No tienes permisos para eliminar pacientes');
         $db = \App\Core\Database::getInstance();
         $patient = $db->fetchOne('SELECT * FROM patients WHERE id = ?', [$id]);
         if (!$patient) { \App\Core\Response::notFound('Paciente no encontrado'); }

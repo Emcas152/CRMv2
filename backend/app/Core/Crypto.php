@@ -87,4 +87,72 @@ class Crypto
     {
         return strncmp($payload, self::HEADER_PREFIX, strlen(self::HEADER_PREFIX)) === 0;
     }
+    
+    /**
+     * Encripta un valor de campo (string, número, etc)
+     * Para usar en campos sensibles como price, nit, phone
+     * 
+     * @param mixed $value Valor a encriptar
+     * @return string Valor encriptado (almacenar en LONGBLOB)
+     */
+    public static function encryptField($value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+        
+        $stringValue = (string) $value;
+        
+        try {
+            return self::encryptBytes($stringValue);
+        } catch (\Exception $e) {
+            error_log("Error encrypting field: " . $e->getMessage());
+            throw new \RuntimeException("Error al encriptar campo: " . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Desencripta un valor de campo
+     * 
+     * @param string $encrypted Valor encriptado
+     * @return string Valor original desencriptado
+     */
+    public static function decryptField(string $encrypted): string
+    {
+        if (empty($encrypted)) {
+            return '';
+        }
+        
+        try {
+            return self::decryptBytes($encrypted);
+        } catch (\Exception $e) {
+            error_log("Error decrypting field: " . $e->getMessage());
+            throw new \RuntimeException("Error al desencriptar campo: " . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Genera un hash SHA256 para búsqueda sin descifrar
+     * Usado para campos como NIT, email, teléfono
+     * 
+     * @param string $value Valor a hashear
+     * @return string SHA256 hash (64 caracteres hex)
+     */
+    public static function hashField(string $value): string
+    {
+        return hash('sha256', trim($value));
+    }
+    
+    /**
+     * Verifica si un valor coincide con su hash
+     * (para búsquedas y validaciones)
+     * 
+     * @param string $value Valor original
+     * @param string $hash Hash para comparar
+     * @return bool True si coinciden
+     */
+    public static function verifyHashField(string $value, string $hash): bool
+    {
+        return hash_equals(self::hashField($value), $hash);
+    }
 }

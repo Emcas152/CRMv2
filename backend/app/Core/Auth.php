@@ -141,6 +141,21 @@ class Auth
         return $user && $user['role'] === $role;
     }
 
+    public static function hasAnyRole(array $roles): bool
+    {
+        $user = self::getCurrentUser();
+        if (!$user || !is_array($user)) {
+            return false;
+        }
+
+        $role = (string)($user['role'] ?? '');
+        if ($role === 'superadmin') {
+            return true;
+        }
+
+        return in_array($role, $roles, true);
+    }
+
     public static function requireRole($role)
     {
         self::requireAuth();
@@ -153,6 +168,21 @@ class Auth
 
         if (!self::hasRole($role)) {
             Response::forbidden('No tienes permisos para esta acción');
+        }
+    }
+
+    public static function requireAnyRole(array $roles, ?string $message = null): void
+    {
+        self::requireAuth();
+
+        $user = self::getCurrentUser();
+        if (($user['role'] ?? null) === 'superadmin') {
+            return;
+        }
+
+        $role = (string)($user['role'] ?? '');
+        if (!in_array($role, $roles, true)) {
+            Response::forbidden($message ?: 'No tienes permisos para esta acción');
         }
     }
 

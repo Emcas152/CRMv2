@@ -16,6 +16,7 @@ class ProductsController
         require_once __DIR__ . '/../Core/Response.php';
         require_once __DIR__ . '/../Core/Audit.php';
         require_once __DIR__ . '/../Core/ErrorHandler.php';
+        require_once __DIR__ . '/../Core/FieldEncryption.php';
     }
 
     public function handle($id = null, $action = null)
@@ -60,6 +61,7 @@ class ProductsController
 
     private function index()
     {
+        \App\Core\Auth::requireAnyRole(['superadmin', 'admin', 'doctor', 'staff'], 'No tienes permisos para ver productos');
         $db = \App\Core\Database::getInstance();
 
         $query = 'SELECT * FROM products WHERE 1=1';
@@ -91,11 +93,21 @@ class ProductsController
 
     private function show($id)
     {
+        \App\Core\Auth::requireAnyRole(['superadmin', 'admin', 'doctor', 'staff'], 'No tienes permisos para ver productos');
         $db = \App\Core\Database::getInstance();
         $product = $db->fetchOne('SELECT * FROM products WHERE id = ?', [$id]);
 
         if (!$product) {
             \App\Core\Response::notFound('Producto no encontrado');
+        }
+
+        // Desencriptar precio si existe
+        if (!empty($product['price_encrypted'])) {
+            try {
+                $product['price'] = \App\Core\FieldEncryption::decryptValue($product['price_encrypted']);
+            } catch (\Exception $e) {
+                error_log("Error desencriptando precio del producto {$id}: " . $e->getMessage());
+            }
         }
 
         \App\Core\Response::success($product);
@@ -127,13 +139,21 @@ class ProductsController
         $db = \App\Core\Database::getInstance();
 
         try {
+            // Validar precio antes de encriptar
+            if (!empty($input['price'])) {
+                if (!\App\Core\FieldEncryption::validateValue($input['price'], \App\Core\FieldEncryption::TYPE_PRICE)) {
+                    \App\Core\Response::validationError(['price' => 'Precio inválido']);
+                }
+            }
+
             $db->execute(
-                'INSERT INTO products (name, sku, description, price, stock, type, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
+                'INSERT INTO products (name, sku, description, price, price_encrypted, stock, type, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
                 [
                     $input['name'],
                     $input['sku'] ?? null,
                     $input['description'] ?? null,
                     $input['price'],
+                    \App\Core\FieldEncryption::encryptValue($input['price']),
                     $input['stock'] ?? 0,
                     $input['type'],
                     isset($input['active']) ? ($input['active'] ? 1 : 0) : 1
@@ -186,11 +206,22 @@ class ProductsController
             $updates = [];
             $params = [];
 
-            foreach (['name', 'sku', 'description', 'price', 'stock', 'type'] as $field) {
+            foreach (['name', 'sku', 'description', 'stock', 'type'] as $field) {
                 if (isset($input[$field])) {
                     $updates[] = $field . ' = ?';
                     $params[] = $input[$field];
                 }
+            }
+
+            // Manejar precio con encriptación
+            if (isset($input['price'])) {
+                if (!\App\Core\FieldEncryption::validateValue($input['price'], \App\Core\FieldEncryption::TYPE_PRICE)) {
+                    \App\Core\Response::validationError(['price' => 'Precio inválido']);
+                }
+                $updates[] = 'price = ?';
+                $updates[] = 'price_encrypted = ?';
+                $params[] = $input['price'];
+                $params[] = \App\Core\FieldEncryption::encryptValue($input['price']);
             }
 
             if (isset($input['active'])) {
@@ -205,6 +236,15 @@ class ProductsController
             $db->execute($query, $params);
 
             $product = $db->fetchOne('SELECT * FROM products WHERE id = ?', [$id]);
+
+            // Desencriptar precio para respuesta
+            if (!empty($product['price_encrypted'])) {
+                try {
+                    $product['price'] = \App\Core\FieldEncryption::decryptValue($product['price_encrypted']);
+                } catch (\Exception $e) {
+                    error_log("Error desencriptando precio: " . $e->getMessage());
+                }
+            }
 
             if (class_exists('\\\App\\Core\\Audit')) {
                 \App\Core\Audit::log('update_product', 'product', $id, ['updates' => $updates]);

@@ -1,6 +1,50 @@
 <?php
 require_once __DIR__ . '/../bootstrap.php';
 
+// ============================================================================
+// PHASE 2: Rate Limiting Middleware
+// ============================================================================
+require_once __DIR__ . '/../app/Core/RateLimiter.php';
+require_once __DIR__ . '/../app/Core/Database.php';
+require_once __DIR__ . '/../app/Core/Auth.php';
+
+use App\Core\RateLimiter;
+use App\Core\Database;
+use App\Core\Auth;
+
+// Inicializar rate limiter
+$rateLimiter = new RateLimiter();
+
+// Obtener user ID si está autenticado (para rate limit por usuario)
+$userId = null;
+$authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+if ($authHeader && preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
+    try {
+        $payload = Auth::parseToken($matches[1]);
+        $userId = $payload['user_id'] ?? null;
+    } catch (\Exception $e) {
+        // Token inválido, continuar sin user_id
+    }
+}
+
+// Verificar rate limit
+$rateLimitResult = $rateLimiter->handle($userId);
+
+if ($rateLimitResult === false) {
+    // Excedió rate limit
+    header('HTTP/1.1 429 Too Many Requests');
+    header('Content-Type: application/json');
+    echo json_encode([
+        'error' => 'Too many requests. Please try again later.',
+        'message' => 'Has excedido el límite de solicitudes. Por favor intente más tarde.'
+    ]);
+    exit;
+}
+
+// ============================================================================
+// Continuar con configuración normal
+// ============================================================================
+
 $config = @include __DIR__ . '/../config/app.php';
 $corsOrigins = $config['cors_origins'] ?? '*';
 $requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';

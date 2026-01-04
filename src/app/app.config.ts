@@ -1,4 +1,4 @@
-import { ApplicationConfig } from '@angular/core';
+import { ApplicationConfig, isDevMode } from '@angular/core';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import {
@@ -17,6 +17,7 @@ import { API_BASE_URL } from './core/api/api.tokens';
 import { authInterceptorFn } from './core/auth/auth.interceptor';
 import { loadingInterceptorFn } from './core/loading/loading.interceptor';
 import { methodOverrideInterceptorFn } from './core/http/method-override.interceptor';
+import { provideServiceWorker } from '@angular/service-worker';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -35,7 +36,10 @@ export const appConfig: ApplicationConfig = {
       withHashLocation()
     ),
     IconSetService,
-    provideAnimationsAsync()
+    provideAnimationsAsync(), provideServiceWorker('ngsw-worker.js', {
+            enabled: !isDevMode(),
+            registrationStrategy: 'registerWhenStable:30000'
+          })
   ]
 };
 

@@ -83,7 +83,7 @@
         <a cDropdownItem routerLink="/crm">
           <svg cIcon class="me-2" name="cilBell"></svg>
           Actualizaciones
-          <c-badge class="ms-2 float-end" color="info"> 42</c-badge>
+          <c-badge class="ms-2 float-end" color="info"> {{ updatesCount }} </c-badge>
         </a>
       </li>
       <li>
@@ -91,7 +91,7 @@
           <svg cIcon class="me-2" name="cilEnvelopeOpen"></svg>
           Mensajes
           <c-badge class="ms-2 float-end" color="success">
-            42
+            {{ unreadMessagesCount }}
           </c-badge>
         </a>
       </li>

@@ -26,14 +26,32 @@ class AppointmentsController
         $method = $_SERVER['REQUEST_METHOD'];
         $input = Request::body();
 
+        // Appointments are part of CRM/clinical operations
         \App\Core\Auth::requireAuth();
+        $user = \App\Core\Auth::getCurrentUser();
+        $role = (string)($user['role'] ?? '');
+
+        // Patients: read-only access to their own appointments
+        if ($role === 'patient') {
+            if ($method === 'GET' && !$id) {
+                return $this->index($user);
+            }
+            if ($method === 'GET' && $id) {
+                return $this->show($id, $user);
+            }
+
+            \App\Core\Response::forbidden('No tienes permisos para esta acción');
+        }
+
+        // Staff/doctor/admin/superadmin: full module access
+        \App\Core\Auth::requireAnyRole(['superadmin', 'admin', 'doctor', 'staff'], 'No tienes permisos para acceder a citas');
 
         if ($method === 'GET' && !$id) {
-            return $this->index();
+            return $this->index($user);
         }
 
         if ($method === 'GET' && $id) {
-            return $this->show($id);
+            return $this->show($id, $user);
         }
 
         if ($method === 'POST' && !$id) {
@@ -67,9 +85,18 @@ class AppointmentsController
         \App\Core\Response::error('Método no permitido', 405);
     }
 
-    private function index()
+    private function getPatientIdForUser($user, $db): ?int
+    {
+        $userId = intval($user['user_id'] ?? 0);
+        $email = (string)($user['email'] ?? '');
+        $row = $db->fetchOne('SELECT id FROM patients WHERE user_id = ? OR (email != "" AND email = ?) LIMIT 1', [$userId, $email]);
+        return $row ? intval($row['id']) : null;
+    }
+
+    private function index($user)
     {
         $db = \App\Core\Database::getInstance();
+        $role = (string)($user['role'] ?? '');
 
         $query = 'SELECT a.id, a.patient_id, a.staff_member_id, a.service, a.status, a.notes,
               CONCAT(a.appointment_date, " ", a.appointment_time) as appointment_date,
@@ -80,6 +107,15 @@ class AppointmentsController
               LEFT JOIN patients p ON a.patient_id = p.id
               WHERE 1=1';
         $params = [];
+
+        if ($role === 'patient') {
+            $patientId = $this->getPatientIdForUser($user, $db);
+            if (!$patientId) {
+                \App\Core\Response::success(['data' => [], 'total' => 0]);
+            }
+            $query .= ' AND a.patient_id = ?';
+            $params[] = $patientId;
+        }
 
         if (isset($_GET['date'])) {
             $query .= ' AND DATE(a.appointment_date) = ?';
@@ -117,9 +153,10 @@ class AppointmentsController
         \App\Core\Response::success(['data' => $appointments, 'total' => count($appointments)]);
     }
 
-    private function show($id)
+    private function show($id, $user)
     {
         $db = \App\Core\Database::getInstance();
+        $role = (string)($user['role'] ?? '');
 
         $appointment = $db->fetchOne(
             'SELECT a.id, a.patient_id, a.staff_member_id, a.service, a.status, a.notes,
@@ -137,13 +174,20 @@ class AppointmentsController
             \App\Core\Response::notFound('Cita no encontrada');
         }
 
+        if ($role === 'patient') {
+            $patientId = $this->getPatientIdForUser($user, $db);
+            if (!$patientId || intval($appointment['patient_id'] ?? 0) !== $patientId) {
+                \App\Core\Response::forbidden('No tienes acceso a esta cita');
+            }
+        }
+
         \App\Core\Response::success($appointment);
     }
 
     private function store($input)
     {
         $user = \App\Core\Auth::getCurrentUser();
-        if (!in_array($user['role'], ['superadmin', 'admin', 'staff'])) {
+        if (!in_array($user['role'], ['superadmin', 'admin', 'doctor', 'staff'], true)) {
             \App\Core\Response::forbidden('No tienes permisos para crear citas');
         }
 

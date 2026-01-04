@@ -9,6 +9,8 @@ use App\Core\Database;
 use App\Core\Auth;
 use App\Core\Mailer;
 use App\Core\Audit;
+use App\Core\LoginAttemptTracker;
+use App\Core\TwoFactorAuth;
 
 class AuthController
 {
@@ -24,6 +26,8 @@ class AuthController
         require_once __DIR__ . '/../Core/Response.php';
         require_once __DIR__ . '/../Core/Mailer.php';
         require_once __DIR__ . '/../Core/Audit.php';
+        require_once __DIR__ . '/../Core/LoginAttemptTracker.php';
+        require_once __DIR__ . '/../Core/TwoFactorAuth.php';
         require_once __DIR__ . '/../Core/ErrorHandler.php';
     }
 
@@ -47,16 +51,170 @@ class AuthController
         $password = $input['password'];
 
         $db = Database::getInstance();
+        $attemptTracker = new LoginAttemptTracker($db);
+        
+        // FASE 2: Verificar si la cuenta está bloqueada
+        if ($attemptTracker->isAccountLocked($email)) {
+            $lockInfo = $attemptTracker->getLockInfo($email);
+            $minutesRemaining = $lockInfo['minutes_remaining'] ?? 15;
+            
+            $attemptTracker->recordAttempt($email, false, 'account_locked');
+            
+            Response::error(
+                "Cuenta temporalmente bloqueada por múltiples intentos fallidos. " .
+                "Intente nuevamente en {$minutesRemaining} minutos.",
+                423 // 423 Locked
+            );
+        }
+
         $user = $db->fetchOne('SELECT * FROM users WHERE email = ? LIMIT 1', [$email]);
 
         if (!$user) {
+            // FASE 2: Registrar intento fallido
+            $attemptTracker->recordAttempt($email, false, 'user_not_found');
             Response::error('Credenciales incorrectas', 401);
         }
 
         if (!Auth::verifyPassword($password, $user['password'] ?? '')) {
+            // FASE 2: Registrar intento fallido
+            $attemptTracker->recordAttempt($email, false, 'invalid_password');
+            
+            $remainingAttempts = LoginAttemptTracker::MAX_ATTEMPTS - $attemptTracker->getRecentFailedAttempts($email);
+            if ($remainingAttempts > 0 && $remainingAttempts <= 2) {
+                Response::error(
+                    "Credenciales incorrectas. Le quedan {$remainingAttempts} intentos antes del bloqueo.",
+                    401
+                );
+            }
+            
             Response::error('Credenciales incorrectas', 401);
         }
 
+        // FASE 2: Login exitoso - registrar y resetear intentos
+        $attemptTracker->recordAttempt($email, true);
+        $attemptTracker->resetAttempts($email);
+
+        // FASE 2: Verificar si tiene 2FA habilitado
+        $twoFA = new TwoFactorAuth($db);
+        
+        if ($twoFA->isEnabled($user['id'])) {
+            // Obtener método y destinatario del usuario
+            $stmt = $db->prepare("
+                SELECT two_factor_method, email, phone 
+                FROM users 
+                WHERE id = ?
+            ");
+            $stmt->execute([$user['id']]);
+            $userInfo = $stmt->fetch(\PDO::FETCH_ASSOC);
+            
+            $method = $userInfo['two_factor_method'] ?? 'email';
+            $recipient = ($method === 'email') 
+                ? $userInfo['email'] 
+                : $userInfo['phone'];
+            
+            // Generar y enviar código 2FA
+            $codeInfo = $twoFA->generateCode($user['id'], $recipient, $method);
+            
+            if ($codeInfo) {
+                // Generar token temporal (válido solo para verificar 2FA)
+                $tempToken = Auth::generateToken(
+                    $user['id'], 
+                    $user['email'], 
+                    $user['role'],
+                    300  // 5 minutos de validez
+                );
+                
+                // Mensaje según método
+                $messages = [
+                    'email' => 'Se ha enviado un código de verificación a su email',
+                    'sms' => 'Se ha enviado un código de verificación por SMS',
+                    'whatsapp' => 'Se ha enviado un código de verificación por WhatsApp'
+                ];
+                
+                Response::json([
+                    'requires_2fa' => true,
+                    'temp_token' => $tempToken,
+                    'message' => $messages[$method] ?? $messages['email'],
+                    'method' => $method,
+                    'expires_in' => TwoFactorAuth::CODE_VALIDITY_MINUTES * 60
+                ], 200);
+            } else {
+                Response::error('Error al generar código de verificación', 500);
+            }
+        }
+
+        // Login sin 2FA - generar token normal
+        $token = Auth::generateToken($user['id'], $user['email'], $user['role']);
+
+        Response::json([
+            'token' => $token,
+            'user' => [
+                'id' => $user['id'],
+                'name' => $user['name'] ?? null,
+                'email' => $user['email'],
+                'role' => $user['role'] ?? null,
+                'email_verified' => isset($user['email_verified']) ? boolval($user['email_verified']) : false
+            ]
+        ], 200);
+    }
+    
+    /**
+     * Verifica código 2FA y completa el login
+     */
+    public function verify2FA()
+    {
+        self::initCore();
+        $input = Request::body();
+
+        $validator = Validator::make($input, [
+            'code' => 'required|string',
+            'temp_token' => 'required|string'
+        ]);
+
+        try {
+            $validator->validate();
+        } catch (\Exception $e) {
+            Response::validationError(['message' => $e->getMessage()]);
+        }
+
+        $code = trim($input['code']);
+        $tempToken = $input['temp_token'];
+
+        // Validar token temporal
+        try {
+            $payload = Auth::parseToken($tempToken);
+            $userId = $payload['user_id'] ?? null;
+            
+            if (!$userId) {
+                Response::error('Token inválido', 401);
+            }
+        } catch (\Exception $e) {
+            Response::error('Token expirado o inválido', 401);
+        }
+
+        $db = Database::getInstance();
+        $twoFA = new TwoFactorAuth($db);
+        
+        // Verificar código o backup code
+        $verified = $twoFA->verifyCode($userId, $code);
+        
+        if (!$verified) {
+            // Intentar con backup code
+            $verified = $twoFA->verifyBackupCode($userId, $code);
+        }
+        
+        if (!$verified) {
+            Response::error('Código de verificación inválido o expirado', 401);
+        }
+        
+        // Código verificado - obtener usuario y generar token final
+        $user = $db->fetchOne('SELECT * FROM users WHERE id = ? LIMIT 1', [$userId]);
+        
+        if (!$user) {
+            Response::error('Usuario no encontrado', 404);
+        }
+        
+        // Generar token final (con duración normal)
         $token = Auth::generateToken($user['id'], $user['email'], $user['role']);
 
         Response::json([

@@ -14,6 +14,7 @@ class UsersController
         require_once __DIR__ . '/../Core/Validator.php';
         require_once __DIR__ . '/../Core/Response.php';
         require_once __DIR__ . '/../Core/ErrorHandler.php';
+        require_once __DIR__ . '/../Core/FieldEncryption.php';
     }
 
     public function handle($id = null, $action = null)
@@ -83,6 +84,18 @@ class UsersController
         $query .= ' ORDER BY created_at DESC';
 
         $users = $db->fetchAll($query, $params);
+        
+        // Desencriptar phone
+        foreach ($users as &$user) {
+            if (!empty($user['phone_encrypted'])) {
+                try {
+                    $user['phone'] = \App\Core\FieldEncryption::decryptValue($user['phone_encrypted']);
+                } catch (\Exception $e) {
+                    error_log("Error desencriptando phone del usuario {$user['id']}: " . $e->getMessage());
+                }
+            }
+        }
+        
         \App\Core\Response::success($users);
     }
 
@@ -97,6 +110,15 @@ class UsersController
 
         if (!$user) {
             \App\Core\Response::notFound('Usuario no encontrado');
+        }
+
+        // Desencriptar phone
+        if (!empty($user['phone_encrypted'])) {
+            try {
+                $user['phone'] = \App\Core\FieldEncryption::decryptValue($user['phone_encrypted']);
+            } catch (\Exception $e) {
+                error_log("Error desencriptando phone del usuario {$id}: " . $e->getMessage());
+            }
         }
 
         \App\Core\Response::success($user);
@@ -131,10 +153,21 @@ class UsersController
 
         try {
             $passwordHash = \App\Core\Auth::hashPassword($input['password']);
+            
+            // Validar y encriptar phone si se proporciona
+            $encryptedPhone = null;
+            $phoneHash = null;
+            if (!empty($input['phone'])) {
+                if (!\App\Core\FieldEncryption::validateValue($input['phone'], \App\Core\FieldEncryption::TYPE_PHONE)) {
+                    \App\Core\Response::validationError(['phone' => 'Teléfono inválido']);
+                }
+                $encryptedPhone = \App\Core\FieldEncryption::encryptValue($input['phone']);
+                $phoneHash = \App\Core\FieldEncryption::hashValue($input['phone']);
+            }
 
             $db->execute(
-                'INSERT INTO users (name, email, password, role, phone, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, NOW(), NOW())',
-                [$input['name'], $input['email'], $passwordHash, $input['role'], $input['phone'] ?? null]
+                'INSERT INTO users (name, email, password, role, phone, phone_encrypted, phone_hash, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())',
+                [$input['name'], $input['email'], $passwordHash, $input['role'], $input['phone'] ?? null, $encryptedPhone, $phoneHash]
             );
 
             $userId = $db->lastInsertId();
@@ -142,6 +175,13 @@ class UsersController
                 'SELECT id, name, email, role, phone, active, created_at FROM users WHERE id = ?',
                 [$userId]
             );
+            
+            // Desencriptar para respuesta
+            if (!empty($newUser['phone_encrypted'])) {
+                try {
+                    $newUser['phone'] = \App\Core\FieldEncryption::decryptValue($newUser['phone_encrypted']);
+                } catch (\Exception $e) {}
+            }
 
             \App\Core\Response::success($newUser, 'Usuario creado exitosamente', 201);
         } catch (\Exception $e) {
@@ -200,8 +240,15 @@ class UsersController
                 $params[] = $input['role'];
             }
             if (isset($input['phone'])) {
+                if (!\App\Core\FieldEncryption::validateValue($input['phone'], \App\Core\FieldEncryption::TYPE_PHONE)) {
+                    \App\Core\Response::validationError(['phone' => 'Teléfono inválido']);
+                }
                 $updates[] = 'phone = ?';
                 $params[] = $input['phone'];
+                $updates[] = 'phone_encrypted = ?';
+                $params[] = \App\Core\FieldEncryption::encryptValue($input['phone']);
+                $updates[] = 'phone_hash = ?';
+                $params[] = \App\Core\FieldEncryption::hashValue($input['phone']);
             }
             if (isset($input['active'])) {
                 $updates[] = 'active = ?';
@@ -218,6 +265,12 @@ class UsersController
                     'SELECT id, name, email, role, phone, active, created_at, updated_at FROM users WHERE id = ?',
                     [$id]
                 );
+                // Desencriptar
+                if (!empty($updatedUser['phone_encrypted'])) {
+                    try {
+                        $updatedUser['phone'] = \App\Core\FieldEncryption::decryptValue($updatedUser['phone_encrypted']);
+                    } catch (\Exception $e) {}
+                }
                 \App\Core\Response::success($updatedUser, 'Sin cambios');
             }
 
@@ -231,6 +284,13 @@ class UsersController
                 'SELECT id, name, email, role, phone, active, created_at, updated_at FROM users WHERE id = ?',
                 [$id]
             );
+            
+            // Desencriptar para respuesta
+            if (!empty($updatedUser['phone_encrypted'])) {
+                try {
+                    $updatedUser['phone'] = \App\Core\FieldEncryption::decryptValue($updatedUser['phone_encrypted']);
+                } catch (\Exception $e) {}
+            }
 
             \App\Core\Response::success($updatedUser, 'Usuario actualizado exitosamente');
         } catch (\Exception $e) {

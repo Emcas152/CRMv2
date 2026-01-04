@@ -25,14 +25,30 @@ class SalesController
         $input = Request::body();
 
         \App\Core\Auth::requireAuth();
+        $user = \App\Core\Auth::getCurrentUser();
+        $role = (string)($user['role'] ?? '');
+
+        // Patients: read-only access to their own purchases
+        if ($role === 'patient') {
+            if ($method === 'GET' && !$id) {
+                return $this->index($user);
+            }
+            if ($method === 'GET' && $id) {
+                return $this->show($id, $user);
+            }
+            \App\Core\Response::forbidden('No tienes permisos para esta acción');
+        }
+
+        // Staff/doctor/admin/superadmin: full module access
+        \App\Core\Auth::requireAnyRole(['superadmin', 'admin', 'doctor', 'staff'], 'No tienes permisos para acceder a ventas');
 
         try {
             if ($method === 'GET' && !$id) {
-                return $this->index();
+                return $this->index($user);
             }
 
             if ($method === 'GET' && $id) {
-                return $this->show($id);
+                return $this->show($id, $user);
             }
 
             if ($method === 'POST' && !$id) {
@@ -53,17 +69,44 @@ class SalesController
         }
     }
 
-    private function index()
+    private function getPatientIdForUser($user, $db): ?int
+    {
+        $userId = intval($user['user_id'] ?? 0);
+        $email = (string)($user['email'] ?? '');
+        $row = $db->fetchOne('SELECT id FROM patients WHERE user_id = ? OR (email != "" AND email = ?) LIMIT 1', [$userId, $email]);
+        return $row ? intval($row['id']) : null;
+    }
+
+    private function index($user)
     {
         $db = \App\Core\Database::getInstance();
+        $role = (string)($user['role'] ?? '');
+
+        $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+        $perPage = isset($_GET['per_page']) ? intval($_GET['per_page']) : 20;
+        if ($perPage <= 0) {
+            $perPage = 20;
+        }
+        $perPage = min(200, $perPage);
+        $offset = ($page - 1) * $perPage;
 
         $query = 'SELECT s.id, s.patient_id, s.subtotal, s.discount, s.total,
+              s.loyalty_points_awarded, s.created_by,
               s.payment_method, s.status, s.notes, s.created_at, s.updated_at,
               p.name as patient_name, p.email as patient_email
               FROM sales s
               LEFT JOIN patients p ON s.patient_id = p.id
               WHERE 1=1';
         $params = [];
+
+        if ($role === 'patient') {
+            $patientId = $this->getPatientIdForUser($user, $db);
+            if (!$patientId) {
+                \App\Core\Response::success(['data' => [], 'total' => 0, 'page' => $page, 'per_page' => $perPage]);
+            }
+            $query .= ' AND s.patient_id = ?';
+            $params[] = $patientId;
+        }
 
         if (isset($_GET['date_from'])) {
             $query .= ' AND DATE(s.created_at) >= ?';
@@ -90,7 +133,45 @@ class SalesController
             $params[] = $_GET['payment_method'];
         }
 
-        $query .= ' ORDER BY s.created_at DESC';
+        // Total count (for pagination)
+        $countQuery = 'SELECT COUNT(*) as total FROM sales s WHERE 1=1';
+        $countParams = [];
+
+        if ($role === 'patient') {
+            $patientId = $this->getPatientIdForUser($user, $db);
+            if (!$patientId) {
+                $countQuery .= ' AND 1=0';
+            } else {
+                $countQuery .= ' AND s.patient_id = ?';
+                $countParams[] = $patientId;
+            }
+        }
+        if (isset($_GET['date_from'])) {
+            $countQuery .= ' AND DATE(s.created_at) >= ?';
+            $countParams[] = $_GET['date_from'];
+        }
+        if (isset($_GET['date_to'])) {
+            $countQuery .= ' AND DATE(s.created_at) <= ?';
+            $countParams[] = $_GET['date_to'];
+        }
+        if (isset($_GET['patient_id'])) {
+            $countQuery .= ' AND s.patient_id = ?';
+            $countParams[] = $_GET['patient_id'];
+        }
+        if (isset($_GET['status'])) {
+            $countQuery .= ' AND s.status = ?';
+            $countParams[] = $_GET['status'];
+        }
+        if (isset($_GET['payment_method'])) {
+            $countQuery .= ' AND s.payment_method = ?';
+            $countParams[] = $_GET['payment_method'];
+        }
+        $countRow = $db->fetchOne($countQuery, $countParams);
+        $totalCount = intval($countRow['total'] ?? 0);
+
+        $query .= ' ORDER BY s.created_at DESC LIMIT ? OFFSET ?';
+        $params[] = $perPage;
+        $params[] = $offset;
 
         $sales = $db->fetchAll($query, $params);
 
@@ -104,12 +185,13 @@ class SalesController
             );
         }
 
-        \App\Core\Response::success(['data' => $sales, 'total' => count($sales)]);
+        \App\Core\Response::success(['data' => $sales, 'total' => $totalCount, 'page' => $page, 'per_page' => $perPage]);
     }
 
-    private function show($id)
+    private function show($id, $user)
     {
         $db = \App\Core\Database::getInstance();
+        $role = (string)($user['role'] ?? '');
 
         $sale = $db->fetchOne(
             'SELECT s.*, p.name as patient_name, p.email as patient_email
@@ -121,6 +203,13 @@ class SalesController
 
         if (!$sale) {
             \App\Core\Response::notFound('Venta no encontrada');
+        }
+
+        if ($role === 'patient') {
+            $patientId = $this->getPatientIdForUser($user, $db);
+            if (!$patientId || intval($sale['patient_id'] ?? 0) !== $patientId) {
+                \App\Core\Response::forbidden('No tienes acceso a esta compra');
+            }
         }
 
         $sale['items'] = $db->fetchAll(
@@ -142,6 +231,7 @@ class SalesController
             'payment_method' => 'required|in:cash,card,transfer,other',
             'discount' => 'numeric',
             'notes' => 'string|max:1000',
+            'loyalty_points' => 'integer|min:0|max:1000000',
         ]);
 
         try {
@@ -155,9 +245,17 @@ class SalesController
         }
 
         $db = \App\Core\Database::getInstance();
+        $user = \App\Core\Auth::getCurrentUser();
+        $createdBy = $user && isset($user['user_id']) ? intval($user['user_id']) : null;
 
         try {
             $db->beginTransaction();
+
+            $patientId = intval($input['patient_id']);
+            $patient = $db->fetchOne('SELECT id, loyalty_points FROM patients WHERE id = ?', [$patientId]);
+            if (!$patient) {
+                throw new \Exception('Paciente no encontrado');
+            }
 
             $subtotal = 0;
             foreach ($input['items'] as $item) {
@@ -185,15 +283,22 @@ class SalesController
 
             $discount = floatval($input['discount'] ?? 0);
             $total = $subtotal - $discount;
+            if ($total < 0) {
+                throw new \Exception('El descuento no puede ser mayor al subtotal');
+            }
+
+            $points = intval($input['loyalty_points'] ?? 0);
 
             $db->execute(
-                'INSERT INTO sales (patient_id, subtotal, discount, total, payment_method, status, notes, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
+                'INSERT INTO sales (patient_id, created_by, subtotal, discount, total, loyalty_points_awarded, payment_method, status, notes, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
                 [
-                    $input['patient_id'],
+                    $patientId,
+                    $createdBy,
                     $subtotal,
                     $discount,
                     $total,
+                    $points,
                     $input['payment_method'],
                     'completed',
                     $input['notes'] ?? null,
@@ -226,10 +331,18 @@ class SalesController
                 }
             }
 
+            // Loyalty points (awarded on completed sale)
+            if ($points > 0) {
+                $db->execute('UPDATE patients SET loyalty_points = loyalty_points + ?, updated_at = NOW() WHERE id = ?', [$points, $patientId]);
+            }
+
             $db->commit();
 
             $sale = $db->fetchOne('SELECT * FROM sales WHERE id = ?', [$saleId]);
             $sale['items'] = $db->fetchAll('SELECT * FROM sale_items WHERE sale_id = ?', [$saleId]);
+            if ($points > 0) {
+                $sale['patient_loyalty_points'] = intval(($db->fetchOne('SELECT loyalty_points FROM patients WHERE id = ?', [$patientId]))['loyalty_points'] ?? 0);
+            }
 
             if (class_exists('\\App\\Core\\Audit')) {
                 \App\Core\Audit::log('create_sale', 'sale', $saleId, ['patient_id' => $input['patient_id'], 'total' => $total]);

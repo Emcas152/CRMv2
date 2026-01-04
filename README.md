@@ -1,3 +1,96 @@
+# CRMv2 (Angular + PHP + MySQL)
+
+CRM con frontend Angular y backend PHP (API REST) + base de datos MySQL.
+
+- Frontend: `src/` (Angular)
+- Backend: `backend/` (PHP)
+- Esquema/seed MySQL: `backend/docs/schema.mysql.sql`, `backend/docs/seed.mysql.sql`
+
+## Requisitos
+
+- Node.js + npm (ver `package.json` → `engines`)
+- MySQL (XAMPP o MySQL Server)
+- PHP (recomendado 8.x) y un servidor web (Apache/Nginx) **o** el servidor embebido de PHP
+
+## Inicio rápido (Windows)
+
+### 1) Setup automático (recomendado)
+
+Este comando instala dependencias frontend y configura la BD (schema + opcional seed):
+
+```powershell
+./tools/setup.ps1 -MysqlPath 'C:\xampp\mysql\bin\mysql.exe' -DbName crm_spa_medico -DbUser root -DbPassword '' -DropAll -Seed
+```
+
+Notas:
+- Si tienes `mysql` en el `PATH`, puedes omitir `-MysqlPath`.
+- `-DropAll` borra tablas conocidas antes de aplicar el schema.
+- `-Seed` carga datos de prueba.
+
+### 2) Levantar el backend
+
+Opción A — PHP embebido (rápido para desarrollo):
+
+```powershell
+php -S 127.0.0.1:8000 -t backend/public
+```
+
+Base URL API: `http://127.0.0.1:8000/api/v1`
+
+Opción B — Apache (XAMPP) / Nginx:
+
+- Publica `backend/public` como document root (recomendado) o crea un VirtualHost.
+- Asegúrate que `backend/.env` tenga `DB_*` correctos (se crea desde `backend/.env.example` al usar `tools/install.ps1`).
+
+### 3) Levantar el frontend
+
+```bash
+npm install
+npm start
+```
+
+App: `http://localhost:4200`
+
+## Configuración de API (frontend)
+
+La URL base de la API está en:
+
+- `src/environments/environment.ts` (dev)
+- `src/environments/environment.production.ts` (prod)
+
+Ejemplos típicos:
+
+- Backend con PHP embebido: `http://127.0.0.1:8000/api/v1`
+- Backend bajo Apache con prefijo `/backend`: `http://127.0.0.1/backend/api/v1`
+
+## Credenciales (si instalas con seed)
+
+Si ejecutas `tools/install.ps1` o `tools/setup.ps1` con `-Seed`, el instalador imprime usuarios de prueba:
+
+- `superadmin@crm.com / superadmin123`
+- `admin@crm.com / admin123`
+- `doctor@crm.com / doctor123`
+- `staff@crm.com / staff123`
+- `patient@crm.com / patient123`
+
+## Documentación
+
+- Instalación (Windows / MySQL): `backend/docs/INSTALL.md`
+- Endpoints reales (guía frontend): `backend/docs/FRONTEND_GUIDE.md`
+- Swagger (si aplica para tu entorno): `backend/docs/swagger.json`
+
+## Notas de CORS
+
+El backend gestiona CORS en `backend/public/index.php` y toma orígenes permitidos de:
+
+- `backend/config/app.php` → `cors_origins`
+- Variables de entorno: `CORS_ALLOWED_ORIGINS` o `CORS_ORIGINS` (por defecto `*`)
+
+## Créditos y licencia
+
+El frontend está basado en **CoreUI Free Angular Admin Template**.
+
+- Licencia del proyecto: ver `LICENSE`.
 [![@coreui angular](https://img.shields.io/badge/@coreui%20-angular-lightgrey.svg?style=flat-square)](https://github.com/coreui/angular)
 [![npm-coreui-angular][npm-coreui-angular-badge]][npm-coreui-angular]
 [![npm-coreui-angular][npm-coreui-angular-badge-next]][npm-coreui-angular]

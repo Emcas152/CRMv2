@@ -71,6 +71,7 @@ class ConversationsController
         $db = \App\Core\Database::getInstance();
         $user = \App\Core\Auth::getCurrentUser();
         $userId = intval($user['user_id']);
+        $role = (string)($user['role'] ?? '');
 
         // List conversations with last message and a simple unread count
         $sql = 'SELECT c.id, c.subject, c.created_by, c.created_at,
@@ -84,10 +85,30 @@ class ConversationsController
                            AND m.sender_user_id <> ?) AS unread_count
                 FROM conversations c
                 JOIN conversation_participants me ON me.conversation_id = c.id AND me.user_id = ?
-                ORDER BY COALESCE((SELECT m.created_at FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1), c.created_at) DESC';
+                WHERE 1=1';
+
+        $params = [$userId, $userId, $userId];
+
+        // Patients: only conversations with doctors/staff/admin from their appointments
+        if ($role === 'patient') {
+            $sql .= ' AND c.id IN (
+                        SELECT DISTINCT cp.conversation_id
+                        FROM conversation_participants cp
+                        JOIN users u ON u.id = cp.user_id
+                        WHERE u.role IN ("doctor", "staff", "admin", "superadmin")
+                          AND cp.conversation_id IN (
+                            SELECT DISTINCT c2.id
+                            FROM conversations c2
+                            JOIN conversation_participants cp2 ON cp2.conversation_id = c2.id AND cp2.user_id = ?
+                          )
+                      )';
+            $params[] = $userId;
+        }
+
+        $sql .= ' ORDER BY COALESCE((SELECT m.created_at FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1), c.created_at) DESC';
 
         try {
-            $items = $db->fetchAll($sql, [$userId, $userId, $userId]);
+            $items = $db->fetchAll($sql, $params);
             \App\Core\Response::success(['data' => $items, 'total' => count($items)]);
         } catch (\Exception $e) {
             \App\Core\Response::dbException('Error al listar conversaciones', $e);
@@ -99,9 +120,24 @@ class ConversationsController
         $db = \App\Core\Database::getInstance();
         $user = \App\Core\Auth::getCurrentUser();
         $userId = intval($user['user_id']);
+        $role = (string)($user['role'] ?? '');
 
         try {
             $this->ensureParticipant($id, $userId);
+
+            // Patients: ensure they can only view conversations with ops staff
+            if ($role === 'patient') {
+                $hasOpsParticipant = $db->fetchOne(
+                    'SELECT 1 FROM conversation_participants cp
+                     JOIN users u ON u.id = cp.user_id
+                     WHERE cp.conversation_id = ? AND u.role IN ("doctor", "staff", "admin", "superadmin") AND u.id != ?
+                     LIMIT 1',
+                    [intval($id), $userId]
+                );
+                if (!$hasOpsParticipant) {
+                    \App\Core\Response::forbidden('No tienes acceso a esta conversación');
+                }
+            }
 
             $conv = $db->fetchOne('SELECT * FROM conversations WHERE id = ? LIMIT 1', [intval($id)]);
             if (!$conv) {
