@@ -12,7 +12,7 @@ import { CreateSaleRequest, Sale, SalesService, UpdateSaleRequest } from '../../
 import { Id, PaymentMethod } from '../../../core/services/api.models';
 import { ProductsService, Product } from '../../../core/services/products.service';
 import { QrService } from '../../../core/services/qr.service';
-import { PatientsService } from '../../../core/services/patients.service';
+import { PatientsService, Patient } from '../../../core/services/patients.service';
 
 @Component({
   selector: 'app-crm-sales-page',
@@ -66,6 +66,7 @@ export class SalesPageComponent implements OnInit, OnDestroy {
   isCameraActive = false;
   cameraError: string | null = null;
   scannedQrCode: string | null = null;
+  currentPatient: Patient | null = null;
 
   readonly filterForm = this.#fb.nonNullable.group({
     patient_id: [0],
@@ -170,6 +171,12 @@ export class SalesPageComponent implements OnInit, OnDestroy {
       const pid = Number(patient?.id ?? 0) || 0;
       if (pid > 0) {
         this.form.controls.patient_id.setValue(pid as any);
+        try {
+          const p = await firstValueFrom(this.#patients.get(pid as Id));
+          this.currentPatient = p as Patient;
+        } catch {
+          this.currentPatient = null;
+        }
       }
     } catch (err: any) {
       this.submitError = this.#formatError(err);
@@ -303,6 +310,7 @@ export class SalesPageComponent implements OnInit, OnDestroy {
 
     this.itemsArray.clear();
     this.itemsArray.push(this.#createItemGroup());
+    this.currentPatient = null;
   }
 
   startEdit(s: Sale): void {
