@@ -397,6 +397,7 @@ class PatientsController {
 
     private function loyaltyAdd($id, $input) {
         \App\Core\Auth::requireAuth();
+        \App\Core\Auth::requireAnyRole(['superadmin', 'admin', 'doctor', 'staff'], 'No tienes permisos para administrar puntos');
         $validator = \App\Core\Validator::make($input, ['points' => 'required|integer|min:1|max:10000']);
         try { $validator->validate(); } catch (\Exception $e) { \App\Core\Response::validationError([$e->getMessage()]); }
         $db = \App\Core\Database::getInstance();
@@ -410,6 +411,7 @@ class PatientsController {
 
     private function loyaltyRedeem($id, $input) {
         \App\Core\Auth::requireAuth();
+        \App\Core\Auth::requireAnyRole(['superadmin', 'admin', 'doctor', 'staff'], 'No tienes permisos para administrar puntos');
         $validator = \App\Core\Validator::make($input, ['points' => 'required|integer|min:1|max:10000']);
         try { $validator->validate(); } catch (\Exception $e) { \App\Core\Response::validationError([$e->getMessage()]); }
         $db = \App\Core\Database::getInstance();

@@ -1,4 +1,5 @@
 import { Component } from '@angular/core';
+import { getStyle } from '@coreui/utils';
 import { ChartData } from 'chart.js';
 import { ChartjsComponent } from '@coreui/angular-chartjs';
 import { CardBodyComponent, CardComponent, CardHeaderComponent, ColComponent, RowComponent } from '@coreui/angular';
@@ -22,7 +23,7 @@ export class ChartsComponent {
     datasets: [
       {
         label: 'GitHub Commits',
-        backgroundColor: '#f87979',
+        backgroundColor: getStyle('--cui-danger') || '#f87979',
         data: [40, 20, 12, 39, 17, 42, 79]
       }
     ]
@@ -40,7 +41,7 @@ export class ChartsComponent {
         backgroundColor: 'rgba(220, 220, 220, 0.2)',
         borderColor: 'rgba(220, 220, 220, 1)',
         pointBackgroundColor: 'rgba(220, 220, 220, 1)',
-        pointBorderColor: '#fff',
+        pointBorderColor: getStyle('--cui-body-bg') || '#fff',
         data: [this.randomData, this.randomData, this.randomData, this.randomData, this.randomData, this.randomData, this.randomData]
       },
       {
@@ -48,7 +49,7 @@ export class ChartsComponent {
         backgroundColor: 'rgba(151, 187, 205, 0.2)',
         borderColor: 'rgba(151, 187, 205, 1)',
         pointBackgroundColor: 'rgba(151, 187, 205, 1)',
-        pointBorderColor: '#fff',
+        pointBorderColor: getStyle('--cui-body-bg') || '#fff',
         data: [this.randomData, this.randomData, this.randomData, this.randomData, this.randomData, this.randomData, this.randomData]
       }
     ]
@@ -62,7 +63,7 @@ export class ChartsComponent {
     labels: ['VueJs', 'EmberJs', 'ReactJs', 'Angular'],
     datasets: [
       {
-        backgroundColor: ['#41B883', '#E46651', '#00D8FF', '#DD1B16'],
+        backgroundColor: [getStyle('--cui-success') || '#41B883', getStyle('--cui-danger') || '#E46651', getStyle('--cui-info') || '#00D8FF', getStyle('--cui-warning') || '#DD1B16'],
         data: [40, 20, 80, 10]
       }
     ]
@@ -80,8 +81,8 @@ export class ChartsComponent {
     datasets: [
       {
         data: [300, 50, 100],
-        backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56'],
-        hoverBackgroundColor: ['#FF6384', '#36A2EB', '#FFCE56']
+        backgroundColor: [getStyle('--cui-danger') || '#FF6384', getStyle('--cui-info') || '#36A2EB', getStyle('--cui-warning') || '#FFCE56'],
+        hoverBackgroundColor: [getStyle('--cui-danger') || '#FF6384', getStyle('--cui-info') || '#36A2EB', getStyle('--cui-warning') || '#FFCE56']
       }
     ]
   };
@@ -98,7 +99,7 @@ export class ChartsComponent {
     datasets: [
       {
         data: [11, 16, 7, 3, 14],
-        backgroundColor: ['#FF6384', '#4BC0C0', '#FFCE56', '#E7E9ED', '#36A2EB']
+        backgroundColor: [getStyle('--cui-danger') || '#FF6384', getStyle('--cui-success') || '#4BC0C0', getStyle('--cui-warning') || '#FFCE56', getStyle('--cui-body-bg') || '#E7E9ED', getStyle('--cui-info') || '#36A2EB']
       }
     ]
   };
@@ -111,8 +112,8 @@ export class ChartsComponent {
         backgroundColor: 'rgba(179,181,198,0.2)',
         borderColor: 'rgba(179,181,198,1)',
         pointBackgroundColor: 'rgba(179,181,198,1)',
-        pointBorderColor: '#fff',
-        pointHoverBackgroundColor: '#fff',
+        pointBorderColor: getStyle('--cui-body-bg') || '#fff',
+        pointHoverBackgroundColor: getStyle('--cui-body-bg') || '#fff',
         pointHoverBorderColor: 'rgba(179,181,198,1)',
         data: [65, 59, 90, 81, 56, 55, 40]
       },
@@ -121,8 +122,8 @@ export class ChartsComponent {
         backgroundColor: 'rgba(255,99,132,0.2)',
         borderColor: 'rgba(255,99,132,1)',
         pointBackgroundColor: 'rgba(255,99,132,1)',
-        pointBorderColor: '#fff',
-        pointHoverBackgroundColor: '#fff',
+        pointBorderColor: getStyle('--cui-body-bg') || '#fff',
+        pointHoverBackgroundColor: getStyle('--cui-body-bg') || '#fff',
         pointHoverBorderColor: 'rgba(255,99,132,1)',
         data: [this.randomData, this.randomData, this.randomData, this.randomData, this.randomData, this.randomData, this.randomData]
       }

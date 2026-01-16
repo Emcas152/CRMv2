@@ -1,0 +1,33 @@
+.patients-header{
+  display:flex;
+  justify-content:space-between;
+}
+.patients-title h2{
+  font-weight:700;
+  font-size:1.375rem;
+  margin-bottom:0;
+}
+.patients-title .small{
+  color:var(--brand-muted);
+}
+.btn-lg.rounded-pill{
+  padding-left:1.4rem;
+  padding-right:1.4rem;
+}
+@media (max-width: 767px){
+  .patients-header{flex-direction:column;gap:.5rem}
+}
+
+.patients-header{
+  background-color: var(--cui-tertiary-bg);
+  padding: 1rem 1.25rem;
+}
+.btn-lg.rounded-pill{
+  background: var(--brand-accent);
+  color: var(--cui-body-color);
+  border: none;
+}
+.product-card, .patient-card{
+  background: var(--brand-surface);
+  border-radius: 10px;
+}

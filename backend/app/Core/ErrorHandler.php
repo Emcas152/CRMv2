@@ -44,9 +44,19 @@ class ErrorHandler
 
         error_log($message);
 
-        if (defined('APP_LOG_FILE') && APP_LOG_FILE) {
-            @file_put_contents(APP_LOG_FILE, date('c') . " " . $message . "\n", FILE_APPEND | LOCK_EX);
+        // Always try to persist errors to a predictable file for shared hosting debugging.
+        // Priority: env APP_LOG_FILE -> constant APP_LOG_FILE -> backend/tools/app_error.log
+        $logFile = getenv('APP_LOG_FILE');
+        if (!$logFile && defined('APP_LOG_FILE') && APP_LOG_FILE) {
+            $logFile = (string)APP_LOG_FILE;
         }
+        if (!$logFile) {
+            $logFile = __DIR__ . '/../../tools/app_error.log';
+        }
+
+        // Write a one-line marker plus the full message (which may contain newlines).
+        $marker = date('c') . " [{$errorId}] " . get_class($e) . ': ' . $e->getMessage() . "\n";
+        @file_put_contents($logFile, $marker . $message . "\n", FILE_APPEND | LOCK_EX);
 
         $config = @include __DIR__ . '/../../config/app.php';
         $env = $config['app_env'] ?? getenv('APP_ENV') ?: 'production';

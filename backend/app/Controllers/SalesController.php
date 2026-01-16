@@ -28,15 +28,9 @@ class SalesController
         $user = \App\Core\Auth::getCurrentUser();
         $role = (string)($user['role'] ?? '');
 
-        // Patients: read-only access to their own purchases
+        // Patients do not have access to sales per role rules.
         if ($role === 'patient') {
-            if ($method === 'GET' && !$id) {
-                return $this->index($user);
-            }
-            if ($method === 'GET' && $id) {
-                return $this->show($id, $user);
-            }
-            \App\Core\Response::forbidden('No tienes permisos para esta acción');
+            \App\Core\Response::forbidden('No tienes permisos para acceder a ventas');
         }
 
         // Staff/doctor/admin/superadmin: full module access
@@ -437,3 +431,5 @@ class SalesController
         }
     }
 }
+
+

@@ -26,6 +26,7 @@ class TasksController
         $input = Request::body();
 
         \App\Core\Auth::requireAuth();
+        \App\Core\Auth::requireAnyRole(['superadmin', 'admin'], 'No tienes permisos para acceder a tareas');
 
         if ($method === 'GET' && !$id) {
             return $this->index();

@@ -2,23 +2,23 @@
   <!-- V Medical Spa Logo - Horizontal Gold (LARGER VERSION) -->
 
   <!-- V Letter -->
-  <text x="15" y="55" font-family="Montserrat, sans-serif" font-size="48" font-weight="900" fill="#F0D17E">
+  <text x="15" y="55" font-family="Montserrat, sans-serif" font-size="48" font-weight="900" fill="var(--cui-warning)">
     V
   </text>
 
   <!-- Decorative vertical line -->
-  <line x1="60" y1="25" x2="60" y2="75" stroke="#F0D17E" stroke-width="2" opacity="0.5"/>
+  <line x1="60" y1="25" x2="60" y2="75" stroke="var(--cui-warning)" stroke-width="2" opacity="0.5"/>
 
   <!-- Medical Spa -->
-  <text x="75" y="50" font-family="Montserrat, sans-serif" font-size="24" font-weight="600" fill="#FFFFFF">
+  <text x="75" y="50" font-family="Montserrat, sans-serif" font-size="24" font-weight="600" fill="var(--cui-body-color)">
     Medical Spa
   </text>
 
   <!-- by DR. VARGAS -->
-  <text x="75" y="70" font-family="Montserrat, sans-serif" font-size="13" font-weight="400" fill="#F0D17E" opacity="0.9">
+  <text x="75" y="70" font-family="Montserrat, sans-serif" font-size="13" font-weight="400" fill="var(--cui-warning)" opacity="0.9">
     by DR. VARGAS
   </text>
 
   <!-- Decorative accent -->
-  <circle cx="270" cy="45" r="3" fill="#F0D17E" opacity="0.6"/>
+  <circle cx="270" cy="45" r="3" fill="var(--cui-warning)" opacity="0.6"/>
 </svg>

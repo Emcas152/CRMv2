@@ -190,8 +190,8 @@ export class ChartSample implements AfterViewInit {
   colors = {
     label: 'My dataset',
     backgroundColor: 'rgba(77,189,116,.2)',
-    borderColor: '#4dbd74',
-    pointHoverBackgroundColor: '#fff'
+    borderColor: getStyle('--cui-success') || '#4dbd74',
+    pointHoverBackgroundColor: getStyle('--cui-body-bg') || '#fff'
   };
 
   labels = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
@@ -229,7 +229,7 @@ export class ChartSample implements AfterViewInit {
             ...this.data.datasets[0],
             data: [42, 88, 42, 66, 77],
             fill: { value: 55 }
-          }, { ...this.data.datasets[0], borderColor: '#ffbd47', data: [88, 42, 66, 77, 42] }]
+            }, { ...this.data.datasets[0], borderColor: getStyle('--cui-warning') || '#ffbd47', data: [88, 42, 66, 77, 42] }]
         };
       };
       const newLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May'];
@@ -245,7 +245,7 @@ export class ChartSample implements AfterViewInit {
         ...this.data,
         datasets: [{ ...this.data.datasets[0], data: newData }, {
           ...this.data.datasets[0],
-          borderColor: '#ffbd47',
+          borderColor: getStyle('--cui-warning') || '#ffbd47',
           data: [88, 42, 66, 77, 42]
         }],
         labels: newLabels

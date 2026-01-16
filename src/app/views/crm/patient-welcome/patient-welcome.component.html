@@ -1,0 +1,27 @@
+<c-row>
+  <c-col xs="12">
+    <c-card class="mb-4">
+      <c-card-header>
+        <strong>Bienvenido</strong>
+      </c-card-header>
+      <c-card-body>
+        <div class="mb-3">
+          <h3 class="mb-1">Bienvenido{{ me?.name ? (', ' + me?.name) : '' }}!</h3>
+          <p class="text-body-secondary">Gracias por usar nuestro portal del paciente. Aquí puedes ver tus próximas citas, historial y recomendaciones.</p>
+        </div>
+
+        <div class="d-flex gap-3">
+          <a cButton color="primary" [routerLink]="['/crm/appointments']">Ver mis citas</a>
+          <a cButton color="secondary" [routerLink]="['/crm/profile']">Mi perfil</a>
+        </div>
+
+        <hr />
+
+        <div>
+          <h5>Próximas citas</h5>
+          <p class="text-body-secondary">Si tienes citas programadas, las verás aquí próximamente.</p>
+        </div>
+      </c-card-body>
+    </c-card>
+  </c-col>
+</c-row>

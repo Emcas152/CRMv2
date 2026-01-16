@@ -1,5 +1,6 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { CommonModule } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 
 import {
@@ -27,12 +28,14 @@ import {
 import { AppointmentStatus, Id } from '../../../core/services/api.models';
 import { Patient, PatientsService } from '../../../core/services/patients.service';
 import { StaffMember, StaffMembersService } from '../../../core/services/staff-members.service';
+import { AuthService, AuthUser } from '../../../core/auth/auth.service';
 
 @Component({
   selector: 'app-crm-appointments-page',
   templateUrl: './appointments-page.component.html',
   standalone: true,
   imports: [
+    CommonModule,
     ReactiveFormsModule,
     RowComponent,
     ColComponent,
@@ -52,6 +55,7 @@ export class AppointmentsPageComponent implements OnInit {
   readonly #appointments = inject(AppointmentsService);
   readonly #patients = inject(PatientsService);
   readonly #staffMembers = inject(StaffMembersService);
+  readonly #auth = inject(AuthService);
   readonly #fb = inject(FormBuilder);
 
   isLoading = false;
@@ -66,6 +70,9 @@ export class AppointmentsPageComponent implements OnInit {
 
   patients: Patient[] = [];
   staffMembers: StaffMember[] = [];
+  me: AuthUser | null = null;
+  isPatient = false;
+  patientIdForFilter = 0;
 
   isSaving = false;
   editingId: Id | null = null;
@@ -98,8 +105,24 @@ export class AppointmentsPageComponent implements OnInit {
   });
 
   ngOnInit(): void {
+    void this.loadMe();
     void this.loadLookups();
     void this.refresh();
+  }
+
+  async loadMe(): Promise<void> {
+    try {
+      const res = await this.#auth.me().toPromise?.();
+      this.me = (res as any)?.user ?? null;
+      this.isPatient = String(this.me?.role ?? '').toLowerCase() === 'patient';
+      this.patientIdForFilter = Number((res as any)?.patient?.id ?? 0) || 0;
+      if (this.isPatient && this.patientIdForFilter > 0) {
+        this.filterForm.controls.patient_id.setValue(this.patientIdForFilter as any);
+      }
+    } catch {
+      this.me = null;
+      this.isPatient = false;
+    }
   }
 
   async loadLookups(): Promise<void> {
@@ -311,6 +334,18 @@ export class AppointmentsPageComponent implements OnInit {
         delete this.rowStatusById[String(a.id)];
       }, 2500);
     }
+  }
+
+  trackByAppointment(_index: number, item: Appointment): number {
+    return item.id;
+  }
+
+  trackByPatient(_index: number, item: Patient): number {
+    return item.id;
+  }
+
+  getRowStatus(a: Appointment): string | null {
+    return (this.rowStatusById[String(a.id)] ?? null) as string | null;
   }
 
   #formatError(err: any): string {

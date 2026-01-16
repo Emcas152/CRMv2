@@ -36,6 +36,15 @@ class Response
 
     public static function json($data, $statusCode = 200)
     {
+        // Ensure UTF-8 content type is sent for all JSON responses
+        if (!headers_sent()) {
+            header('Content-Type: application/json; charset=utf-8');
+        }
+        // Ensure PHP internal encoding uses UTF-8
+        if (function_exists('ini_set')) {
+            @ini_set('default_charset', 'utf-8');
+        }
+
         http_response_code($statusCode);
         echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit;

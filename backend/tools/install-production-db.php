@@ -12,6 +12,7 @@
  *   php backend/tools/install-production-db.php --apply
  *   php backend/tools/install-production-db.php --apply --db=crm_spa_medico
  *   php backend/tools/install-production-db.php --apply --with-seed
+ *   php backend/tools/install-production-db.php --apply --no-wipe
  *
  * Credentials resolution order:
  *  1) CLI flags --host/--port/--user/--pass/--db
@@ -21,12 +22,46 @@
 
 declare(strict_types=1);
 
+// Version stamp to confirm the server is running the expected installer build.
+// Bump this when deploying changes to shared hosting.
+const INSTALLER_VERSION = '2026-01-05.mysql8-ifnotexists-rewrite-v10-no-prepared-profiles';
+
+// Load .env automatically (same behavior as backend bootstrap)
+// so this installer can run using production credentials without SSH.
+@require_once __DIR__ . '/../app/Core/helpers.php';
+
+// PHP 7.x compatibility (shared hosting). PHP 8+ provides str_ends_with.
+if (!function_exists('str_ends_with')) {
+    function str_ends_with(string $haystack, string $needle): bool {
+        if ($needle === '') {
+            return true;
+        }
+        $len = strlen($needle);
+        if ($len === 0) {
+            return true;
+        }
+        return substr($haystack, -$len) === $needle;
+    }
+}
+
 function stderr(string $message): void {
-    fwrite(STDERR, $message . PHP_EOL);
+    if (defined('STDERR')) {
+        @fwrite(STDERR, $message . PHP_EOL);
+        return;
+    }
+
+    // Web SAPI fallback
+    echo $message . "\n";
 }
 
 function stdout(string $message): void {
-    fwrite(STDOUT, $message . PHP_EOL);
+    if (defined('STDOUT')) {
+        @fwrite(STDOUT, $message . PHP_EOL);
+        return;
+    }
+
+    // Web SAPI fallback
+    echo $message . "\n";
 }
 
 function parseArgs(array $argv): array {
@@ -40,6 +75,10 @@ function parseArgs(array $argv): array {
         if ($arg === '--apply') { $out['apply'] = true; continue; }
         if ($arg === '--with-seed') { $out['with_seed'] = true; continue; }
         if ($arg === '--skip-create-db') { $out['skip_create_db'] = true; continue; }
+        if ($arg === '--wipe') { $out['wipe'] = true; continue; }
+        if ($arg === '--no-wipe') { $out['no_wipe'] = true; continue; }
+        if ($arg === '--print-profiles') { $out['print_profiles'] = true; continue; }
+        if ($arg === '--no-print-profiles') { $out['no_print_profiles'] = true; continue; }
         if ($arg === '--no-phase2') { $out['no_phase2'] = true; continue; }
         if ($arg === '--no-phase3') { $out['no_phase3'] = true; continue; }
 
@@ -93,100 +132,119 @@ function createDatabaseIfMissing(PDO $pdo, string $dbName): void {
     $pdo->exec("CREATE DATABASE IF NOT EXISTS `{$safe}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
 }
 
+function dropDatabaseIfExists(PDO $pdo, string $dbName): void {
+    $safe = str_replace('`', '``', $dbName);
+    $pdo->exec("DROP DATABASE IF EXISTS `{$safe}`");
+}
+
+function wipeDatabaseObjects(PDO $pdo, string $dbName): void {
+    // Drops tables/views/triggers/routines/events inside the current database.
+    // This is a fallback for shared hosting environments where DROP DATABASE is not permitted.
+    $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
+
+    // Events
+    $stmt = $pdo->prepare('SELECT EVENT_NAME FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ?');
+    $stmt->execute([$dbName]);
+    foreach ($stmt->fetchAll() as $row) {
+        $name = (string)($row['EVENT_NAME'] ?? '');
+        if ($name === '') continue;
+        $safe = str_replace('`', '``', $name);
+        $pdo->exec("DROP EVENT IF EXISTS `{$safe}`");
+    }
+
+    // Triggers
+    $stmt = $pdo->prepare('SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ?');
+    $stmt->execute([$dbName]);
+    foreach ($stmt->fetchAll() as $row) {
+        $name = (string)($row['TRIGGER_NAME'] ?? '');
+        if ($name === '') continue;
+        $safe = str_replace('`', '``', $name);
+        $pdo->exec("DROP TRIGGER IF EXISTS `{$safe}`");
+    }
+
+    // Routines (procedures/functions)
+    $stmt = $pdo->prepare('SELECT ROUTINE_NAME, ROUTINE_TYPE FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = ?');
+    $stmt->execute([$dbName]);
+    foreach ($stmt->fetchAll() as $row) {
+        $name = (string)($row['ROUTINE_NAME'] ?? '');
+        $type = strtoupper((string)($row['ROUTINE_TYPE'] ?? ''));
+        if ($name === '' || ($type !== 'PROCEDURE' && $type !== 'FUNCTION')) continue;
+        $safe = str_replace('`', '``', $name);
+        $pdo->exec("DROP {$type} IF EXISTS `{$safe}`");
+    }
+
+    // Views
+    $stmt = $pdo->prepare("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'VIEW'");
+    $stmt->execute([$dbName]);
+    foreach ($stmt->fetchAll() as $row) {
+        $name = (string)($row['TABLE_NAME'] ?? '');
+        if ($name === '') continue;
+        $safe = str_replace('`', '``', $name);
+        $pdo->exec("DROP VIEW IF EXISTS `{$safe}`");
+    }
+
+    // Base tables
+    $stmt = $pdo->prepare("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'");
+    $stmt->execute([$dbName]);
+    $tables = $stmt->fetchAll();
+    if (!empty($tables)) {
+        $parts = [];
+        foreach ($tables as $row) {
+            $name = (string)($row['TABLE_NAME'] ?? '');
+            if ($name === '') continue;
+            $safe = str_replace('`', '``', $name);
+            $parts[] = "`{$safe}`";
+        }
+        if (!empty($parts)) {
+            $pdo->exec('DROP TABLE IF EXISTS ' . implode(', ', $parts));
+        }
+    }
+
+    $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
+}
+
 function splitSqlStatements(string $sql): array {
     // Strip UTF-8 BOM
     $sql = preg_replace('/^\xEF\xBB\xBF/', '', $sql) ?? $sql;
 
+    // Delimiter-aware, line-based splitter.
+    // This is intentionally simple and robust for our schema files.
     $statements = [];
-    $current = '';
-    $inSingle = false;
-    $inDouble = false;
-    $inBacktick = false;
-    $inLineComment = false;
-    $inBlockComment = false;
+    $delimiter = ';';
+    $buffer = '';
 
-    $len = strlen($sql);
-    for ($i = 0; $i < $len; $i++) {
-        $ch = $sql[$i];
-        $next = $i + 1 < $len ? $sql[$i + 1] : '';
-
-        if ($inLineComment) {
-            if ($ch === "\n") {
-                $inLineComment = false;
-                $current .= $ch;
-            }
-            continue;
-        }
-
-        if ($inBlockComment) {
-            if ($ch === '*' && $next === '/') {
-                $inBlockComment = false;
-                $i++; // consume '/'
-            }
-            continue;
-        }
-
-        // Start comments only when not inside quotes
-        if (!$inSingle && !$inDouble && !$inBacktick) {
-            if ($ch === '-' && $next === '-') {
-                // MySQL '-- ' comment; we accept '--' at line start or after whitespace
-                $prev = $i > 0 ? $sql[$i - 1] : "\n";
-                if ($prev === "\n" || $prev === "\r" || ctype_space($prev)) {
-                    $inLineComment = true;
-                    $i++; // consume second '-'
-                    continue;
-                }
-            }
-            if ($ch === '#') {
-                $inLineComment = true;
-                continue;
-            }
-            if ($ch === '/' && $next === '*') {
-                $inBlockComment = true;
-                $i++; // consume '*'
-                continue;
-            }
-        }
-
-        // Toggle quote states
-        if ($ch === "'" && !$inDouble && !$inBacktick) {
-            $escaped = $i > 0 && $sql[$i - 1] === '\\';
-            if (!$escaped) $inSingle = !$inSingle;
-        } elseif ($ch === '"' && !$inSingle && !$inBacktick) {
-            $escaped = $i > 0 && $sql[$i - 1] === '\\';
-            if (!$escaped) $inDouble = !$inDouble;
-        } elseif ($ch === '`' && !$inSingle && !$inDouble) {
-            $inBacktick = !$inBacktick;
-        }
-
-        // Statement boundary
-        if ($ch === ';' && !$inSingle && !$inDouble && !$inBacktick) {
-            $trimmed = trim($current);
-            if ($trimmed !== '') {
-                $statements[] = $trimmed;
-            }
-            $current = '';
-            continue;
-        }
-
-        $current .= $ch;
+    $lines = preg_split("/\r\n|\n|\r/", $sql);
+    if ($lines === false) {
+        $lines = [$sql];
     }
 
-    $trimmed = trim($current);
-    if ($trimmed !== '') {
-        $statements[] = $trimmed;
-    }
-
-    // Remove DELIMITER directives (not supported by this simple runner)
-    $filtered = [];
-    foreach ($statements as $stmt) {
-        if (preg_match('/^DELIMITER\s+/i', ltrim($stmt))) {
+    foreach ($lines as $line) {
+        // Handle DELIMITER directives
+        if (preg_match('/^\s*DELIMITER\s+(\S+)\s*$/i', $line, $m)) {
+            $delimiter = $m[1];
             continue;
         }
-        $filtered[] = $stmt;
+
+        $buffer .= $line . "\n";
+
+        // Emit statements when buffer ends with delimiter (trim-right aware)
+        $trimRight = rtrim($buffer);
+        if ($delimiter !== '' && str_ends_with($trimRight, $delimiter)) {
+            $stmt = substr($trimRight, 0, -strlen($delimiter));
+            $stmt = trim($stmt);
+            if ($stmt !== '') {
+                $statements[] = $stmt;
+            }
+            $buffer = '';
+        }
     }
 
-    return $filtered;
+    $tail = trim($buffer);
+    if ($tail !== '') {
+        $statements[] = $tail;
+    }
+
+    return $statements;
 }
 
 function columnExists(PDO $pdo, string $dbName, string $table, string $column): bool {
@@ -203,24 +261,171 @@ function indexExists(PDO $pdo, string $dbName, string $table, string $index): bo
     return intval($row['c'] ?? 0) > 0;
 }
 
-function runStatement(PDO $pdo, string $dbName, string $statement): void {
-    $normalized = preg_replace('/\s+/', ' ', trim($statement)) ?? trim($statement);
+function routineExists(PDO $pdo, string $dbName, string $name, string $type): bool {
+    $type = strtoupper($type);
+    if ($type !== 'PROCEDURE' && $type !== 'FUNCTION') {
+        return false;
+    }
+    $stmt = $pdo->prepare('SELECT COUNT(*) AS c FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = ? AND ROUTINE_NAME = ? AND ROUTINE_TYPE = ?');
+    $stmt->execute([$dbName, $name, $type]);
+    $row = $stmt->fetch();
+    return intval($row['c'] ?? 0) > 0;
+}
 
-    // Proactively handle IF NOT EXISTS patterns to be compatible with older MySQL.
-    // 1) ALTER TABLE ... ADD COLUMN IF NOT EXISTS
-    if (preg_match('/^ALTER TABLE\s+`?([a-zA-Z0-9_]+)`?\s+ADD COLUMN\s+IF NOT EXISTS\s+`?([a-zA-Z0-9_]+)`?\s+(.*)$/i', $normalized, $m)) {
-        $table = $m[1];
-        $column = $m[2];
-        $rest = $m[3];
+function splitTopLevelCommas(string $s): array {
+    $parts = [];
+    $buf = '';
+    $len = strlen($s);
+    $depth = 0;
+    $inSingle = false;
+    $inDouble = false;
 
-        if (columnExists($pdo, $dbName, $table, $column)) {
-            return;
+    for ($i = 0; $i < $len; $i++) {
+        $ch = $s[$i];
+
+        if ($ch === "'" && !$inDouble) {
+            $prev = $i > 0 ? $s[$i - 1] : '';
+            if ($prev !== '\\') {
+                $inSingle = !$inSingle;
+            }
+        } elseif ($ch === '"' && !$inSingle) {
+            $prev = $i > 0 ? $s[$i - 1] : '';
+            if ($prev !== '\\') {
+                $inDouble = !$inDouble;
+            }
         }
 
-        $safeTable = str_replace('`', '``', $table);
-        $safeCol = str_replace('`', '``', $column);
-        $pdo->exec("ALTER TABLE `{$safeTable}` ADD COLUMN `{$safeCol}` {$rest}");
+        if (!$inSingle && !$inDouble) {
+            if ($ch === '(') {
+                $depth++;
+            } elseif ($ch === ')' && $depth > 0) {
+                $depth--;
+            }
+
+            if ($ch === ',' && $depth === 0) {
+                $parts[] = trim($buf);
+                $buf = '';
+                continue;
+            }
+        }
+
+        $buf .= $ch;
+    }
+
+    $tail = trim($buf);
+    if ($tail !== '') {
+        $parts[] = $tail;
+    }
+    return $parts;
+}
+
+function stripLeadingSqlComments(string $sql): string {
+    $s = $sql;
+    for ($i = 0; $i < 50; $i++) {
+        $before = $s;
+
+        // Remove leading line comments (MySQL supports -- and #)
+        $s = preg_replace('/^\s*(?:(?:--[^\n]*\n)|(?:#[^\n]*\n))+/', '', $s) ?? $s;
+
+        // Remove leading block comments /* ... */
+        $s = preg_replace('/^\s*\/\*.*?\*\//s', '', $s) ?? $s;
+
+        if ($s === $before) {
+            break;
+        }
+    }
+
+    return ltrim($s);
+}
+
+function runStatement(PDO $pdo, string $dbName, string $statement): void {
+    // Some schema files place `--` comments immediately before a statement. Strip them so
+    // our pattern matching (e.g., ALTER TABLE rewrites) can trigger reliably.
+    $statement = stripLeadingSqlComments($statement);
+
+    $trimmed = trim($statement);
+    if ($trimmed === '' || strlen($trimmed) === 0) {
         return;
+    }
+
+    $normalized = preg_replace('/\s+/', ' ', $trimmed) ?? $trimmed;
+
+    // Additional safety: skip if normalized statement is empty or only whitespace
+    if (trim($normalized) === '' || strlen(trim($normalized)) === 0) {
+        return;
+    }
+
+    // DROP INDEX IF EXISTS idx_name ON table
+    if (preg_match('/^DROP INDEX\s+IF EXISTS\s+`?([a-zA-Z0-9_]+)`?\s+ON\s+`?([a-zA-Z0-9_]+)`?$/i', $normalized, $m)) {
+        $index = $m[1];
+        $table = $m[2];
+        if (!indexExists($pdo, $dbName, $table, $index)) {
+            return;
+        }
+        $safeIndex = str_replace('`', '``', $index);
+        $safeTable = str_replace('`', '``', $table);
+        $pdo->exec("DROP INDEX `{$safeIndex}` ON `{$safeTable}`");
+        return;
+    }
+
+    // CREATE PROCEDURE/FUNCTION IF NOT EXISTS name(...) ...
+    if (preg_match('/^CREATE\s+(PROCEDURE|FUNCTION)\s+IF NOT EXISTS\s+`?([a-zA-Z0-9_]+)`?\s*(.*)$/is', $trimmed, $m)) {
+        $type = strtoupper($m[1]);
+        $name = $m[2];
+        $rest = $m[3];
+        if (routineExists($pdo, $dbName, $name, $type)) {
+            stdout("  Skipping existing {$type}: {$name}");
+            return;
+        }
+        $safeName = str_replace('`', '``', $name);
+        // Remove IF NOT EXISTS and execute
+        $cleanStatement = preg_replace(
+            '/^CREATE\s+(PROCEDURE|FUNCTION)\s+IF NOT EXISTS\s+/i',
+            "CREATE $1 ",
+            $trimmed
+        );
+        $pdo->exec($cleanStatement);
+        return;
+    }
+
+    // Proactively handle IF NOT EXISTS patterns to be compatible with MySQL (no ADD COLUMN IF NOT EXISTS).
+    // Handles both single and multi-column ALTER TABLE by rewriting and applying column-by-column.
+    if (stripos($normalized, 'ALTER TABLE') === 0 && stripos($normalized, 'ADD COLUMN IF NOT EXISTS') !== false) {
+        if (preg_match('/^ALTER TABLE\s+`?([a-zA-Z0-9_]+)`?\s+(.*)$/i', $normalized, $m)) {
+            $table = $m[1];
+            $ops = $m[2];
+
+            // Rewrite to MySQL-compatible syntax, then split and apply idempotently.
+            $ops = preg_replace('/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+/i', 'ADD COLUMN ', $ops) ?? $ops;
+            $segments = splitTopLevelCommas($ops);
+            $safeTable = str_replace('`', '``', $table);
+
+            foreach ($segments as $seg) {
+                $segTrim = trim($seg);
+                if ($segTrim === '') continue;
+                $segNorm = preg_replace('/\s+/', ' ', $segTrim) ?? $segTrim;
+
+                if (preg_match('/^ADD COLUMN\s+`?([a-zA-Z0-9_]+)`?\s+(.*)$/i', $segNorm, $mm)) {
+                    $column = $mm[1];
+                    $rest = trim($mm[2]);
+                    if ($rest === '') {
+                        continue; // Skip empty column definition
+                    }
+                    if (columnExists($pdo, $dbName, $table, $column)) {
+                        continue;
+                    }
+                    $safeCol = str_replace('`', '``', $column);
+                    $pdo->exec("ALTER TABLE `{$safeTable}` ADD COLUMN `{$safeCol}` {$rest}");
+                    continue;
+                }
+
+                // For any other operations in the ALTER TABLE statement, run them as-is.
+                if ($segTrim !== '' && strlen($segTrim) > 0) {
+                    $pdo->exec("ALTER TABLE `{$safeTable}` {$segTrim}");
+                }
+            }
+            return;
+        }
     }
 
     // 2) CREATE [UNIQUE] INDEX IF NOT EXISTS
@@ -241,8 +446,75 @@ function runStatement(PDO $pdo, string $dbName, string $statement): void {
         return;
     }
 
-    // Default: run as-is
-    $pdo->exec($statement);
+    // 3) CREATE [UNIQUE] INDEX (without IF NOT EXISTS) -> make idempotent
+    if (preg_match('/^CREATE\s+(UNIQUE\s+)?INDEX\s+`?([a-zA-Z0-9_]+)`?\s+ON\s+`?([a-zA-Z0-9_]+)`?\s*\((.*)\)$/i', $normalized, $m)) {
+        $unique = trim((string)($m[1] ?? '')) !== '';
+        $index = $m[2];
+        $table = $m[3];
+        $cols = $m[4];
+
+        if (indexExists($pdo, $dbName, $table, $index)) {
+            return;
+        }
+
+        $safeIndex = str_replace('`', '``', $index);
+        $safeTable = str_replace('`', '``', $table);
+        $prefix = $unique ? 'CREATE UNIQUE INDEX' : 'CREATE INDEX';
+        $pdo->exec("{$prefix} `{$safeIndex}` ON `{$safeTable}` ({$cols})");
+        return;
+    }
+
+    // Default: run as-is, but provide a safety fallback for IF NOT EXISTS syntax errors.
+    try {
+        // Additional validation before executing
+        if (trim($normalized) === '' || strlen(trim($normalized)) === 0) {
+            stderr("WARN: Attempted to execute empty statement, skipping.");
+            return;
+        }
+        $pdo->exec($statement);
+    } catch (PDOException $e) {
+        // Log the problematic statement for debugging
+        stderr("ERROR executing SQL: " . substr($normalized, 0, 200));
+        stderr("Full error: " . $e->getMessage());
+        $msg = $e->getMessage();
+        if (stripos($msg, 'IF NOT EXISTS') !== false && stripos($normalized, 'ADD COLUMN IF NOT EXISTS') !== false) {
+            // Retry via the rewrite path above.
+            if (preg_match('/^ALTER TABLE\s+`?([a-zA-Z0-9_]+)`?\s+(.*)$/i', $normalized, $m)) {
+                $table = $m[1];
+                $ops = $m[2];
+                $ops = preg_replace('/ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+/i', 'ADD COLUMN ', $ops) ?? $ops;
+                $segments = splitTopLevelCommas($ops);
+                $safeTable = str_replace('`', '``', $table);
+
+                foreach ($segments as $seg) {
+                    $segTrim = trim($seg);
+                    if ($segTrim === '') continue;
+                    $segNorm = preg_replace('/\s+/', ' ', $segTrim) ?? $segTrim;
+
+                    if (preg_match('/^ADD COLUMN\s+`?([a-zA-Z0-9_]+)`?\s+(.*)$/i', $segNorm, $mm)) {
+                        $column = $mm[1];
+                        $rest = trim($mm[2]);
+                        if ($rest === '') {
+                            continue; // Skip empty column definition
+                        }
+                        if (columnExists($pdo, $dbName, $table, $column)) {
+                            continue;
+                        }
+                        $safeCol = str_replace('`', '``', $column);
+                        $pdo->exec("ALTER TABLE `{$safeTable}` ADD COLUMN `{$safeCol}` {$rest}");
+                        continue;
+                    }
+
+                    if ($segTrim !== '' && strlen($segTrim) > 0) {
+                        $pdo->exec("ALTER TABLE `{$safeTable}` {$segTrim}");
+                    }
+                }
+                return;
+            }
+        }
+
+        throw $e;
+    }
 }
 
 function runSqlFile(PDO $pdo, string $dbName, string $filePath): void {
@@ -256,12 +528,230 @@ function runSqlFile(PDO $pdo, string $dbName, string $filePath): void {
     }
 
     $statements = splitSqlStatements($sql);
+    $stmtNum = 0;
     foreach ($statements as $stmt) {
+        $stmtNum++;
         $trim = trim($stmt);
-        if ($trim === '') continue;
+        if ($trim === '') {
+            stdout("  Skipping empty statement #{$stmtNum}");
+            continue;
+        }
 
-        runStatement($pdo, $dbName, $trim);
+        $preview = substr(preg_replace('/\s+/', ' ', $trim), 0, 80);
+        stdout("  [{$stmtNum}] {$preview}...");
+
+        try {
+            runStatement($pdo, $dbName, $trim);
+        } catch (Throwable $e) {
+            stderr("FAILED at statement #{$stmtNum} in " . basename($filePath));
+            stderr("Statement preview: {$preview}");
+            stderr("Full statement: " . substr($trim, 0, 500));
+            throw $e;
+        }
     }
+}
+
+function fetchUserIdByEmail(PDO $pdo, string $email): ?int {
+    $emailQuoted = sqlQuote($pdo, $email);
+    $row = $pdo->query("SELECT id FROM users WHERE email = {$emailQuoted} LIMIT 1")?->fetch();
+    if (!$row) {
+        return null;
+    }
+    return intval($row['id'] ?? 0) ?: null;
+}
+
+function sqlQuote(PDO $pdo, mixed $value): string {
+    if ($value === null) {
+        return 'NULL';
+    }
+    return $pdo->quote((string)$value);
+}
+
+function isPreparedStatementReprepareError(Throwable $e): bool {
+    if (!($e instanceof PDOException)) {
+        return false;
+    }
+    $info = $e->errorInfo;
+    $driverCode = is_array($info) ? intval($info[1] ?? 0) : 0;
+    if ($driverCode === 1615) {
+        return true;
+    }
+    $msg = $e->getMessage();
+    return stripos($msg, 'needs to be re-prepared') !== false;
+}
+
+function execWithRetry(PDO $pdo, string $sql, int $attempts = 2): void {
+    $attempt = 0;
+    while (true) {
+        $attempt++;
+        try {
+            $pdo->exec($sql);
+            return;
+        } catch (Throwable $e) {
+            if ($attempt < $attempts && isPreparedStatementReprepareError($e)) {
+                // Shared hosting MySQL can intermittently throw 1615 after DDL.
+                usleep(150000);
+                continue;
+            }
+            throw $e;
+        }
+    }
+}
+
+function upsertUser(PDO $pdo, array $row): int {
+    // Avoid prepared statements here (Hostalia/MySQL can throw 1615 intermittently after DDL).
+    $name = sqlQuote($pdo, $row['name'] ?? '');
+    $email = sqlQuote($pdo, $row['email'] ?? '');
+    $password = sqlQuote($pdo, $row['password'] ?? '');
+    $role = sqlQuote($pdo, $row['role'] ?? '');
+    $phone = sqlQuote($pdo, $row['phone'] ?? '');
+
+    $sql =
+        'INSERT INTO users (name, email, password, role, phone, active, email_verified) '
+        . "VALUES ({$name}, {$email}, {$password}, {$role}, {$phone}, 1, 1) "
+        . 'ON DUPLICATE KEY UPDATE '
+        . 'name = VALUES(name), '
+        . 'password = VALUES(password), '
+        . 'role = VALUES(role), '
+        . 'phone = VALUES(phone), '
+        . 'active = 1, '
+        . 'email_verified = 1, '
+        . 'updated_at = CURRENT_TIMESTAMP';
+
+    execWithRetry($pdo, $sql, 3);
+
+    $id = intval($pdo->lastInsertId());
+    if ($id > 0) {
+        return $id;
+    }
+
+    $existing = fetchUserIdByEmail($pdo, (string)$row['email']);
+    if ($existing === null) {
+        throw new RuntimeException('Failed to upsert user and re-fetch id for: ' . $row['email']);
+    }
+    return $existing;
+}
+
+function createRoleProfiles(PDO $pdo): array {
+    // Creates one default user per role (minimal production-friendly baseline).
+    // Passwords are set to known values to allow first-login; change them after install.
+    $users = [
+        [
+            'name' => 'Super Administrador',
+            'email' => 'superadmin@crm.com',
+            'password_plain' => 'superadmin123',
+            'role' => 'superadmin',
+            'phone' => '+502 0000-0000',
+        ],
+        [
+            'name' => 'Administrador del Sistema',
+            'email' => 'admin@crm.com',
+            'password_plain' => 'admin123',
+            'role' => 'admin',
+            'phone' => '+502 1234-5678',
+        ],
+        [
+            'name' => 'Dr. Carlos Méndez',
+            'email' => 'doctor@crm.com',
+            'password_plain' => 'doctor123',
+            'role' => 'doctor',
+            'phone' => '+502 2345-6789',
+        ],
+        [
+            'name' => 'Ana López',
+            'email' => 'staff@crm.com',
+            'password_plain' => 'staff123',
+            'role' => 'staff',
+            'phone' => '+502 3456-7890',
+        ],
+        [
+            'name' => 'María González',
+            'email' => 'patient@crm.com',
+            'password_plain' => 'patient123',
+            'role' => 'patient',
+            'phone' => '+502 5551-1234',
+        ],
+    ];
+
+    $idsByRole = [];
+    foreach ($users as $u) {
+        $idsByRole[$u['role']] = upsertUser($pdo, [
+            'name' => $u['name'],
+            'email' => $u['email'],
+            'password' => password_hash($u['password_plain'], PASSWORD_BCRYPT),
+            'role' => $u['role'],
+            'phone' => $u['phone'],
+        ]);
+    }
+
+    // Create linked staff member records for doctor/staff, if tables exist.
+    $tableCheck = $pdo->query("SELECT COUNT(*) AS c FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'staff_members'");
+    $hasStaffMembers = intval(($tableCheck?->fetch()['c'] ?? 0)) > 0;
+    if ($hasStaffMembers) {
+        $doctorId = intval($idsByRole['doctor'] ?? 0);
+        $staffId = intval($idsByRole['staff'] ?? 0);
+
+        execWithRetry($pdo, "DELETE FROM staff_members WHERE user_id = {$doctorId}", 3);
+        execWithRetry(
+            $pdo,
+            'INSERT INTO staff_members (user_id, name, position, phone) VALUES ('
+            . $doctorId . ', '
+            . sqlQuote($pdo, 'Dr. Carlos Méndez') . ', '
+            . sqlQuote($pdo, 'Doctor') . ', '
+            . sqlQuote($pdo, '+502 2345-6789')
+            . ')',
+            3
+        );
+
+        execWithRetry($pdo, "DELETE FROM staff_members WHERE user_id = {$staffId}", 3);
+        execWithRetry(
+            $pdo,
+            'INSERT INTO staff_members (user_id, name, position, phone) VALUES ('
+            . $staffId . ', '
+            . sqlQuote($pdo, 'Ana López') . ', '
+            . sqlQuote($pdo, 'Staff') . ', '
+            . sqlQuote($pdo, '+502 3456-7890')
+            . ')',
+            3
+        );
+    }
+
+    // Create linked patient profile for patient role, if patients table exists.
+    $tableCheck = $pdo->query("SELECT COUNT(*) AS c FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'patients'");
+    $hasPatients = intval(($tableCheck?->fetch()['c'] ?? 0)) > 0;
+    if ($hasPatients) {
+        $patientId = intval($idsByRole['patient'] ?? 0);
+        execWithRetry($pdo, "DELETE FROM patients WHERE user_id = {$patientId}", 3);
+        execWithRetry(
+            $pdo,
+            'INSERT INTO patients (user_id, name, email, phone, birthday, address, nit, loyalty_points) VALUES ('
+            . $patientId . ', '
+            . sqlQuote($pdo, 'María González') . ', '
+            . sqlQuote($pdo, 'patient@crm.com') . ', '
+            . sqlQuote($pdo, '+502 5551-1234') . ', '
+            . sqlQuote($pdo, '1985-03-15') . ', '
+            . sqlQuote($pdo, 'Guatemala') . ', '
+            . 'NULL' . ', '
+            . '0'
+            . ')',
+            3
+        );
+    }
+
+    return $users;
+}
+
+function printRoleProfiles(array $profiles): void {
+    stdout('');
+    stdout('== Default Profiles ==');
+    foreach ($profiles as $p) {
+        $role = (string)($p['role'] ?? '');
+        $email = (string)($p['email'] ?? '');
+        $pass = (string)($p['password_plain'] ?? '');
+        stdout("- {$role}: {$email} / {$pass}");
+    }
+    stdout('IMPORTANT: change these passwords after first login.');
+    stdout('');
 }
 
 function verifyBasics(PDO $pdo, string $dbName): array {
@@ -311,6 +801,10 @@ function main(array $argv): int {
         stdout('');
         stdout('Options:');
         stdout('  --apply             Execute changes (required).');
+        stdout('  --wipe              Drop + recreate the database before install (default).');
+        stdout('  --no-wipe           Do NOT wipe database before install.');
+        stdout('  --print-profiles    Print default role profiles at the end (default).');
+        stdout('  --no-print-profiles Do NOT print the default role profiles.');
         stdout('  --with-seed         Also load backend/docs/seed.mysql.sql (optional).');
         stdout('  --skip-create-db    Do not create database (assume it exists).');
         stdout('  --no-phase2         Skip phase2 schema files.');
@@ -327,6 +821,29 @@ function main(array $argv): int {
     if (empty($args['apply'])) {
         stderr('Refusing to run without --apply (safety).');
         stderr('Run: php backend/tools/install-production-db.php --apply');
+        return 2;
+    }
+
+    // Default: print profiles (user requested).
+    $printProfiles = true;
+    if (!empty($args['no_print_profiles'])) {
+        $printProfiles = false;
+    }
+    if (!empty($args['print_profiles'])) {
+        $printProfiles = true;
+    }
+
+    // By default, we wipe the database (per production installer requirement).
+    $wipe = true;
+    if (!empty($args['no_wipe'])) {
+        $wipe = false;
+    }
+    if (!empty($args['wipe'])) {
+        $wipe = true;
+    }
+    if (!empty($args['skip_create_db']) && $wipe) {
+        stderr('Cannot use --skip-create-db together with wiping.');
+        stderr('Remove --skip-create-db, or add --no-wipe.');
         return 2;
     }
 
@@ -371,13 +888,31 @@ function main(array $argv): int {
     stdout('User: ' . $cfg['username']);
     stdout('');
 
-    // 1) Connect to server and create DB
+    // 1) Connect to server and (re)create DB
     $serverPdo = pdoConnectServer($cfg);
-    if (empty($args['skip_create_db'])) {
-        stdout('Creating database if missing...');
-        createDatabaseIfMissing($serverPdo, $dbName);
+    if ($wipe) {
+        stdout('Wiping database (drop + recreate)...');
+        try {
+            dropDatabaseIfExists($serverPdo, $dbName);
+            createDatabaseIfMissing($serverPdo, $dbName);
+        } catch (Throwable $e) {
+            stderr('WARN: DROP DATABASE not permitted or failed; wiping objects inside schema instead.');
+            // Ensure DB exists, then connect and wipe objects.
+            createDatabaseIfMissing($serverPdo, $dbName);
+
+            $tmpCfg = $cfg;
+            $tmpCfg['database'] = $dbName;
+            $tmpPdo = pdoConnectDatabase($tmpCfg);
+            $tmpPdo->exec("SET NAMES {$cfg['charset']}");
+            wipeDatabaseObjects($tmpPdo, $dbName);
+        }
     } else {
-        stdout('Skipping database creation (--skip-create-db).');
+        if (empty($args['skip_create_db'])) {
+            stdout('Creating database if missing...');
+            createDatabaseIfMissing($serverPdo, $dbName);
+        } else {
+            stdout('Skipping database creation (--skip-create-db).');
+        }
     }
 
     // 2) Connect to DB and run SQL
@@ -387,6 +922,17 @@ function main(array $argv): int {
     foreach ($sqlFiles as $file) {
         stdout('Applying: ' . basename($file));
         runSqlFile($dbPdo, $dbName, $file);
+    }
+
+    // Force PDO to clear any cached prepared statements before inserting user data
+    // This prevents "Prepared statement needs to be re-prepared" errors after ALTER TABLE
+    $dbPdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
+
+    // 2.5) Create one default profile per role
+    stdout('Creating default role profiles (users)...');
+    $profiles = createRoleProfiles($dbPdo);
+    if ($printProfiles) {
+        printRoleProfiles($profiles);
     }
 
     // 3) Verify
@@ -408,9 +954,13 @@ function main(array $argv): int {
     return 0;
 }
 
-try {
-    exit(main($argv));
-} catch (Throwable $e) {
-    stderr('❌ Installer failed: ' . $e->getMessage());
-    exit(1);
+// Auto-run only when executed via CLI. When included from a web entrypoint,
+// it behaves like a library and the caller can invoke main([...]) manually.
+if (PHP_SAPI === 'cli') {
+    try {
+        exit(main($argv));
+    } catch (Throwable $e) {
+        stderr('❌ Installer failed: ' . $e->getMessage());
+        exit(1);
+    }
 }

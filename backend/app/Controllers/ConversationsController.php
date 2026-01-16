@@ -26,6 +26,7 @@ class ConversationsController
         $input = Request::body();
 
         \App\Core\Auth::requireAuth();
+        \App\Core\Auth::requireAnyRole(['superadmin', 'doctor', 'patient'], 'No tienes permisos para acceder a conversaciones');
 
         if ($method === 'GET' && !$id) {
             return $this->index();
@@ -62,8 +63,54 @@ class ConversationsController
             [intval($conversationId), intval($userId)]
         );
         if (!$row) {
-            \App\Core\Response::forbidden('No tienes acceso a esta conversación');
+            \App\Core\Response::forbidden('No tienes acceso a esta conversacion');
         }
+    }
+
+    private function getPatientIdForUser(array $user): ?int
+    {
+        $db = \App\Core\Database::getInstance();
+        $userId = intval($user['user_id'] ?? 0);
+        $email = (string)($user['email'] ?? '');
+        $row = $db->fetchOne('SELECT id FROM patients WHERE user_id = ? OR (email != "" AND email = ?) LIMIT 1', [$userId, $email]);
+        return $row ? intval($row['id']) : null;
+    }
+
+    private function getStaffMemberIdForUser(int $userId): ?int
+    {
+        $db = \App\Core\Database::getInstance();
+        $row = $db->fetchOne('SELECT id FROM staff_members WHERE user_id = ? LIMIT 1', [$userId]);
+        return $row ? intval($row['id']) : null;
+    }
+
+    private function isDoctorAssignedToPatient(int $doctorUserId, int $patientId): bool
+    {
+        $db = \App\Core\Database::getInstance();
+        $row = $db->fetchOne(
+            'SELECT 1
+             FROM appointments a
+             JOIN staff_members sm ON sm.id = a.staff_member_id
+             JOIN users u ON u.id = sm.user_id
+             WHERE a.patient_id = ? AND u.role = "doctor" AND u.id = ?
+             LIMIT 1',
+            [$patientId, $doctorUserId]
+        );
+        return (bool)$row;
+    }
+
+    private function getRolesByUserIds(array $userIds): array
+    {
+        if (!$userIds) {
+            return [];
+        }
+        $db = \App\Core\Database::getInstance();
+        $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+        $rows = $db->fetchAll('SELECT id, role FROM users WHERE id IN (' . $placeholders . ')', $userIds);
+        $rolesById = [];
+        foreach ($rows as $r) {
+            $rolesById[intval($r['id'])] = (string)$r['role'];
+        }
+        return $rolesById;
     }
 
     private function index()
@@ -75,34 +122,51 @@ class ConversationsController
 
         // List conversations with last message and a simple unread count
         $sql = 'SELECT c.id, c.subject, c.created_by, c.created_at,
-                       (SELECT m.body FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_message,
-                       (SELECT m.created_at FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_message_at,
-                       (SELECT COUNT(*)
-                          FROM messages m
-                          JOIN conversation_participants cp ON cp.conversation_id = c.id AND cp.user_id = ?
-                         WHERE m.conversation_id = c.id
-                           AND (cp.last_read_at IS NULL OR m.created_at > cp.last_read_at)
-                           AND m.sender_user_id <> ?) AS unread_count
-                FROM conversations c
-                JOIN conversation_participants me ON me.conversation_id = c.id AND me.user_id = ?
-                WHERE 1=1';
+               (SELECT m.body FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_message,
+               (SELECT m.created_at FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_message_at,
+               (SELECT COUNT(*)
+                  FROM messages m
+                  JOIN conversation_participants cp ON cp.conversation_id = c.id AND cp.user_id = ?
+                 WHERE m.conversation_id = c.id
+                   AND (cp.last_read_at IS NULL OR m.created_at > cp.last_read_at)
+                   AND m.sender_user_id <> ?) AS unread_count
+        FROM conversations c
+        JOIN conversation_participants me ON me.conversation_id = c.id AND me.user_id = ?
+        WHERE 1=1';
 
         $params = [$userId, $userId, $userId];
 
-        // Patients: only conversations with doctors/staff/admin from their appointments
+        // Patients: only conversations with assigned doctors
         if ($role === 'patient') {
+            $patientId = $this->getPatientIdForUser($user);
+            if (!$patientId) {
+        \App\Core\Response::success(['data' => [], 'total' => 0]);
+            }
             $sql .= ' AND c.id IN (
-                        SELECT DISTINCT cp.conversation_id
-                        FROM conversation_participants cp
-                        JOIN users u ON u.id = cp.user_id
-                        WHERE u.role IN ("doctor", "staff", "admin", "superadmin")
-                          AND cp.conversation_id IN (
-                            SELECT DISTINCT c2.id
-                            FROM conversations c2
-                            JOIN conversation_participants cp2 ON cp2.conversation_id = c2.id AND cp2.user_id = ?
-                          )
-                      )';
-            $params[] = $userId;
+                SELECT DISTINCT cp.conversation_id
+                FROM conversation_participants cp
+                JOIN users u ON u.id = cp.user_id AND u.role = "doctor"
+                JOIN staff_members sm ON sm.user_id = u.id
+                JOIN appointments a ON a.staff_member_id = sm.id AND a.patient_id = ?
+                WHERE cp.conversation_id = c.id
+              )';
+            $params[] = $patientId;
+        }
+
+        // Doctors: only conversations with assigned patients
+        if ($role === 'doctor') {
+            $staffId = $this->getStaffMemberIdForUser($userId);
+            if (!$staffId) {
+        \App\Core\Response::success(['data' => [], 'total' => 0]);
+            }
+            $sql .= ' AND c.id IN (
+                SELECT DISTINCT cp.conversation_id
+                FROM conversation_participants cp
+                JOIN patients p ON p.user_id = cp.user_id
+                JOIN appointments a ON a.patient_id = p.id AND a.staff_member_id = ?
+                WHERE cp.conversation_id = c.id
+              )';
+            $params[] = $staffId;
         }
 
         $sql .= ' ORDER BY COALESCE((SELECT m.created_at FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1), c.created_at) DESC';
@@ -125,38 +189,65 @@ class ConversationsController
         try {
             $this->ensureParticipant($id, $userId);
 
-            // Patients: ensure they can only view conversations with ops staff
+            // Patients: only conversations with assigned doctors
             if ($role === 'patient') {
-                $hasOpsParticipant = $db->fetchOne(
-                    'SELECT 1 FROM conversation_participants cp
-                     JOIN users u ON u.id = cp.user_id
-                     WHERE cp.conversation_id = ? AND u.role IN ("doctor", "staff", "admin", "superadmin") AND u.id != ?
-                     LIMIT 1',
-                    [intval($id), $userId]
-                );
-                if (!$hasOpsParticipant) {
-                    \App\Core\Response::forbidden('No tienes acceso a esta conversación');
-                }
+        $patientId = $this->getPatientIdForUser($user);
+        if (!$patientId) {
+            \App\Core\Response::forbidden('No tienes acceso a esta conversacion');
+        }
+        $hasAssignedDoctor = $db->fetchOne(
+            'SELECT 1
+             FROM conversation_participants cp
+             JOIN users u ON u.id = cp.user_id AND u.role = "doctor"
+             JOIN staff_members sm ON sm.user_id = u.id
+             JOIN appointments a ON a.staff_member_id = sm.id AND a.patient_id = ?
+             WHERE cp.conversation_id = ?
+             LIMIT 1',
+            [$patientId, intval($id)]
+        );
+        if (!$hasAssignedDoctor) {
+            \App\Core\Response::forbidden('No tienes acceso a esta conversacion');
+        }
+            }
+
+            // Doctors: only conversations with assigned patients
+            if ($role === 'doctor') {
+        $staffId = $this->getStaffMemberIdForUser($userId);
+        if (!$staffId) {
+            \App\Core\Response::forbidden('No tienes acceso a esta conversacion');
+        }
+        $hasAssignedPatient = $db->fetchOne(
+            'SELECT 1
+             FROM conversation_participants cp
+             JOIN patients p ON p.user_id = cp.user_id
+             JOIN appointments a ON a.patient_id = p.id AND a.staff_member_id = ?
+             WHERE cp.conversation_id = ?
+             LIMIT 1',
+            [$staffId, intval($id)]
+        );
+        if (!$hasAssignedPatient) {
+            \App\Core\Response::forbidden('No tienes acceso a esta conversacion');
+        }
             }
 
             $conv = $db->fetchOne('SELECT * FROM conversations WHERE id = ? LIMIT 1', [intval($id)]);
             if (!$conv) {
-                \App\Core\Response::notFound('Conversación no encontrada');
+        \App\Core\Response::notFound('Conversacion no encontrada');
             }
 
             $participants = $db->fetchAll(
-                'SELECT u.id, u.name, u.email, u.role
-                 FROM conversation_participants cp
-                 JOIN users u ON u.id = cp.user_id
-                 WHERE cp.conversation_id = ?
-                 ORDER BY u.name ASC',
-                [intval($id)]
+        'SELECT u.id, u.name, u.email, u.role
+         FROM conversation_participants cp
+         JOIN users u ON u.id = cp.user_id
+         WHERE cp.conversation_id = ?
+         ORDER BY u.name ASC',
+        [intval($id)]
             );
 
             $conv['participants'] = $participants;
             \App\Core\Response::success($conv);
         } catch (\Exception $e) {
-            \App\Core\Response::dbException('Error al obtener conversación', $e);
+            \App\Core\Response::dbException('Error al obtener conversacion', $e);
         }
     }
 
@@ -194,21 +285,79 @@ class ConversationsController
             \App\Core\Response::validationError(['participant_user_ids' => 'Debes incluir al menos 2 participantes']);
         }
 
-        // Rule: patients cannot start conversations with other patients.
         $creatorRole = (string)($user['role'] ?? '');
-        if ($creatorRole === 'patient') {
-            $rows = $db->fetchAll('SELECT id, role FROM users WHERE id IN (' . implode(',', array_fill(0, count($participantIds), '?')) . ')', $participantIds);
-            $rolesById = [];
-            foreach ($rows as $r) {
-                $rolesById[intval($r['id'])] = (string)$r['role'];
+        if (!in_array($creatorRole, ['patient', 'doctor'], true)) {
+            \App\Core\Response::forbidden('Solo pacientes y doctores pueden iniciar conversaciones');
+        }
+
+        $rolesById = $this->getRolesByUserIds($participantIds);
+        $otherIds = [];
+        foreach ($participantIds as $pid) {
+            if ($pid !== $creatorId) {
+        $otherIds[] = $pid;
             }
-            foreach ($participantIds as $pid) {
-                if ($pid === $creatorId) {
-                    continue;
-                }
-                if (($rolesById[$pid] ?? 'patient') === 'patient') {
-                    \App\Core\Response::forbidden('Los pacientes no pueden iniciar conversaciones con otros pacientes');
-                }
+        }
+
+        $hasPatient = false;
+        $hasDoctor = false;
+
+        foreach ($otherIds as $pid) {
+            $role = $rolesById[$pid] ?? '';
+            if (!in_array($role, ['patient', 'doctor'], true)) {
+        \App\Core\Response::forbidden('Solo pacientes y doctores pueden participar');
+            }
+            if ($role === 'patient') {
+        $hasPatient = true;
+            }
+            if ($role === 'doctor') {
+        $hasDoctor = true;
+            }
+        }
+
+        if ($creatorRole === 'patient') {
+            if ($hasPatient) {
+        \App\Core\Response::forbidden('Los pacientes no pueden iniciar conversaciones con otros pacientes');
+            }
+            if (!$hasDoctor) {
+        \App\Core\Response::validationError(['participant_user_ids' => 'Debes incluir un doctor asignado']);
+            }
+            $patientId = $this->getPatientIdForUser($user);
+            if (!$patientId) {
+        \App\Core\Response::forbidden('No tienes acceso a esta conversacion');
+            }
+            foreach ($otherIds as $pid) {
+        if (!($rolesById[$pid] ?? '') || ($rolesById[$pid] ?? '') !== 'doctor') {
+            \App\Core\Response::forbidden('Solo puedes conversar con doctores asignados');
+        }
+        if (!$this->isDoctorAssignedToPatient($pid, $patientId)) {
+            \App\Core\Response::forbidden('Solo puedes conversar con tu doctor asignado');
+        }
+            }
+        }
+
+        if ($creatorRole === 'doctor') {
+            if ($hasDoctor) {
+        \App\Core\Response::forbidden('Los doctores solo pueden conversar con pacientes');
+            }
+            if (!$hasPatient) {
+        \App\Core\Response::validationError(['participant_user_ids' => 'Debes incluir un paciente asignado']);
+            }
+            $staffId = $this->getStaffMemberIdForUser($creatorId);
+            if (!$staffId) {
+        \App\Core\Response::forbidden('No tienes acceso a esta conversacion');
+            }
+            foreach ($otherIds as $pid) {
+        if (($rolesById[$pid] ?? '') !== 'patient') {
+            \App\Core\Response::forbidden('Solo puedes conversar con pacientes');
+        }
+        $patientRow = $db->fetchOne('SELECT id FROM patients WHERE user_id = ? LIMIT 1', [$pid]);
+        if (!$patientRow) {
+            \App\Core\Response::forbidden('Paciente no encontrado');
+        }
+        $patientId = intval($patientRow['id']);
+        if (!$this->isDoctorAssignedToPatient($creatorId, $patientId)) {
+            \App\Core\Response::forbidden('Solo puedes conversar con pacientes asignados');
+        }
             }
         }
 
@@ -222,24 +371,24 @@ class ConversationsController
             $db->beginTransaction();
 
             $db->execute(
-                'INSERT INTO conversations (subject, created_by, created_at) VALUES (?, ?, NOW())',
-                [$subject !== '' ? $subject : null, $creatorId]
+        'INSERT INTO conversations (subject, created_by, created_at) VALUES (?, ?, NOW())',
+        [$subject !== '' ? $subject : null, $creatorId]
             );
             $convId = intval($db->lastInsertId());
 
             foreach ($participantIds as $uid) {
-                $db->execute(
-                    'INSERT INTO conversation_participants (conversation_id, user_id, last_read_at, created_at)
-                     VALUES (?, ?, NULL, NOW())
-                     ON DUPLICATE KEY UPDATE user_id = VALUES(user_id)',
-                    [$convId, $uid]
-                );
+        $db->execute(
+            'INSERT INTO conversation_participants (conversation_id, user_id, last_read_at, created_at)
+             VALUES (?, ?, NULL, NOW())
+             ON DUPLICATE KEY UPDATE user_id = VALUES(user_id)',
+            [$convId, $uid]
+        );
             }
 
             $db->execute(
-                'INSERT INTO messages (conversation_id, sender_user_id, body, created_at)
-                 VALUES (?, ?, ?, NOW())',
-                [$convId, $creatorId, $firstMessage]
+        'INSERT INTO messages (conversation_id, sender_user_id, body, created_at)
+         VALUES (?, ?, ?, NOW())',
+        [$convId, $creatorId, $firstMessage]
             );
 
             // mark creator as read
@@ -248,7 +397,7 @@ class ConversationsController
             $db->commit();
 
             if (class_exists('\\App\\Core\\Audit')) {
-                \App\Core\Audit::log('create_conversation', 'conversation', $convId, ['participants' => $participantIds]);
+        \App\Core\Audit::log('create_conversation', 'conversation', $convId, ['participants' => $participantIds]);
             }
 
             $conv = $db->fetchOne('SELECT * FROM conversations WHERE id = ? LIMIT 1', [$convId]);
@@ -269,13 +418,13 @@ class ConversationsController
             $this->ensureParticipant($id, $userId);
 
             $items = $db->fetchAll(
-                'SELECT m.id, m.conversation_id, m.sender_user_id, m.body, m.created_at,
-                        u.name as sender_name, u.role as sender_role
-                 FROM messages m
-                 JOIN users u ON u.id = m.sender_user_id
-                 WHERE m.conversation_id = ?
-                 ORDER BY m.created_at ASC',
-                [intval($id)]
+        'SELECT m.id, m.conversation_id, m.sender_user_id, m.body, m.created_at,
+                u.name as sender_name, u.role as sender_role
+         FROM messages m
+         JOIN users u ON u.id = m.sender_user_id
+         WHERE m.conversation_id = ?
+         ORDER BY m.created_at ASC',
+        [intval($id)]
             );
 
             \App\Core\Response::success(['data' => $items, 'total' => count($items)]);
@@ -309,9 +458,9 @@ class ConversationsController
             $this->ensureParticipant($id, $userId);
 
             $db->execute(
-                'INSERT INTO messages (conversation_id, sender_user_id, body, created_at)
-                 VALUES (?, ?, ?, NOW())',
-                [intval($id), $userId, $body]
+        'INSERT INTO messages (conversation_id, sender_user_id, body, created_at)
+         VALUES (?, ?, ?, NOW())',
+        [intval($id), $userId, $body]
             );
             $msgId = $db->lastInsertId();
 
@@ -319,7 +468,7 @@ class ConversationsController
             $db->execute('UPDATE conversation_participants SET last_read_at = NOW() WHERE conversation_id = ? AND user_id = ?', [intval($id), $userId]);
 
             if (class_exists('\\App\\Core\\Audit')) {
-                \App\Core\Audit::log('send_message', 'conversation', $id, ['message_id' => $msgId]);
+        \App\Core\Audit::log('send_message', 'conversation', $id, ['message_id' => $msgId]);
             }
 
             $msg = $db->fetchOne('SELECT * FROM messages WHERE id = ?', [$msgId]);
@@ -344,3 +493,11 @@ class ConversationsController
         }
     }
 }
+
+
+
+
+
+
+
+

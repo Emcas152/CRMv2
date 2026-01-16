@@ -47,7 +47,7 @@ class AuthController
             Response::validationError(['message' => $e->getMessage()]);
         }
 
-        $email = Sanitizer::email($input['email']);
+        $email = Sanitizer::email($input['login']);
         $password = $input['password'];
 
         $db = Database::getInstance();

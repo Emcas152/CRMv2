@@ -59,14 +59,14 @@ export class WidgetsBrandComponent implements AfterContentInit {
   colors = {
     backgroundColor: 'rgba(255,255,255,.1)',
     borderColor: 'rgba(255,255,255,.55)',
-    pointHoverBackgroundColor: '#fff',
+    pointHoverBackgroundColor: getStyle('--cui-body-bg') || '#fff',
     pointBackgroundColor: 'rgba(255,255,255,.55)'
   };
   brandData: BrandData[] = [
     {
       icon: 'cibFacebook',
       values: [{ title: 'friends', value: '89K' }, { title: 'feeds', value: '459' }],
-      capBg: { '--cui-card-cap-bg': '#3b5998' },
+      capBg: { '--cui-card-cap-bg': 'var(--cui-primary)' },
       labels: [...this.labels],
       data: {
         labels: [...this.labels],
@@ -76,7 +76,7 @@ export class WidgetsBrandComponent implements AfterContentInit {
     {
       icon: 'cibTwitter',
       values: [{ title: 'followers', value: '973k' }, { title: 'tweets', value: '1.792' }],
-      capBg: { '--cui-card-cap-bg': '#00aced' },
+      capBg: { '--cui-card-cap-bg': 'var(--cui-info)' },
       data: {
         labels: [...this.labels],
         datasets: [{ ...this.datasets, data: [1, 13, 9, 17, 34, 41, 38], label: 'Twitter', ...this.colors }]
@@ -85,7 +85,7 @@ export class WidgetsBrandComponent implements AfterContentInit {
     {
       icon: 'cib-linkedin',
       values: [{ title: 'contacts', value: '500' }, { title: 'feeds', value: '1.292' }],
-      capBg: { '--cui-card-cap-bg': '#4875b4' },
+      capBg: { '--cui-card-cap-bg': 'var(--cui-secondary)' },
       data: {
         labels: [...this.labels],
         datasets: [{ ...this.datasets, data: [78, 81, 80, 45, 34, 12, 40], label: 'LinkedIn', ...this.colors }]

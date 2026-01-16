@@ -90,7 +90,7 @@ export class DashboardChartsData {
         // brandSuccess
         backgroundColor: 'transparent',
         borderColor: brandSuccess || '#4dbd74',
-        pointHoverBackgroundColor: '#fff'
+        pointHoverBackgroundColor: getStyle('--cui-body-bg') || '#fff'
       },
       {
         // brandDanger

@@ -63,6 +63,13 @@ export class DefaultHeaderComponent extends HeaderComponent {
   updatesCount = 0;
   unreadMessagesCount = 0;
   isBadgeLoading = false;
+  canSeeUpdates = false;
+  canSeeConversations = false;
+  canSeeTasks = false;
+  canSeeComments = false;
+  canSeePatients = false;
+  canSeeAppointments = false;
+  canSeeSales = false;
 
   async onLogout(): Promise<void> {
     try {
@@ -73,7 +80,44 @@ export class DefaultHeaderComponent extends HeaderComponent {
   }
 
   async ngOnInit(): Promise<void> {
-    await this.refreshBadges();
+    await this.loadPermissions();
+    if (this.canSeeUpdates || this.canSeeConversations) {
+      await this.refreshBadges();
+    } else {
+      this.updatesCount = 0;
+      this.unreadMessagesCount = 0;
+    }
+  }
+
+  async loadPermissions(): Promise<void> {
+    try {
+      const me = await firstValueFrom(this.#auth.me());
+      const role = me?.user?.role;
+      const isSuperadmin = role === 'superadmin';
+      const isAdmin = role === 'admin' || isSuperadmin;
+      const isDoctor = role === 'doctor';
+      const isStaff = role === 'staff';
+      const isPatient = role === 'patient';
+
+      this.canSeePatients = isAdmin || isDoctor || isStaff;
+      this.canSeeAppointments = isAdmin || isDoctor || isStaff;
+      this.canSeeSales = isAdmin || isDoctor || isStaff;
+
+      if (isPatient) {
+        this.canSeePatients = false;
+        this.canSeeAppointments = false;
+        this.canSeeSales = false;
+      }
+      this.canSeeUpdates = isAdmin;
+      this.canSeeConversations = isSuperadmin || isDoctor || isPatient;
+      this.canSeeTasks = isAdmin;
+      this.canSeeComments = isAdmin;
+    } catch {
+      this.canSeeUpdates = false;
+      this.canSeeConversations = false;
+      this.canSeeTasks = false;
+      this.canSeeComments = false;
+    }
   }
 
   async refreshBadges(): Promise<void> {

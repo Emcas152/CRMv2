@@ -1,5 +1,5 @@
 import { JsonPipe } from '@angular/common';
-import { Component, ElementRef, OnDestroy, OnInit, ViewChild, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, ElementRef, OnDestroy, OnInit, ViewChild, inject } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 
@@ -48,6 +48,7 @@ export class QrPageComponent implements OnInit {
   readonly #fb = inject(FormBuilder);
   readonly #qr = inject(QrService);
   readonly #appointments = inject(AppointmentsService);
+  readonly #cdr = inject(ChangeDetectorRef);
 
   @ViewChild('videoEl') videoEl?: ElementRef<HTMLVideoElement>;
   readonly #reader = new BrowserQRCodeReader();
@@ -85,14 +86,20 @@ export class QrPageComponent implements OnInit {
     this.cameraError = null;
     this.error = null;
 
-    const video = this.videoEl?.nativeElement;
-    if (!video) {
-      this.cameraError = 'No se encontró el elemento de video.';
-      return;
-    }
-
     try {
       this.isCameraActive = true;
+
+      // The <video> is behind an @if in the template; wait for it to render.
+      this.#cdr.detectChanges();
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+
+      const video = this.videoEl?.nativeElement;
+      if (!video) {
+        this.isCameraActive = false;
+        this.cameraError = 'No se encontró el elemento de video.';
+        return;
+      }
+
       this.#scannerControls = await this.#reader.decodeFromVideoDevice(undefined, video, (result, err) => {
         if (!result) return;
 

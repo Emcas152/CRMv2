@@ -29,7 +29,7 @@ class StaffMembersController
             }
 
             // Needed for appointments assignment / filtering.
-            if (!in_array($authUser['role'], ['superadmin', 'admin', 'staff'], true)) {
+            if (!in_array($authUser['role'], ['superadmin', 'admin'], true)) {
                 \App\Core\Response::forbidden('No tienes permisos para ver staff');
             }
 
@@ -55,3 +55,4 @@ class StaffMembersController
         }
     }
 }
+

@@ -10,6 +10,8 @@
 
 // Custom styles for this theme
 @use "theme";
+// Brand variables (replace values with exact tokens from Brandbook V Medical Spa.pdf)
+@use "brand";
 
 // Some temp fixes
 //@use "fixes";

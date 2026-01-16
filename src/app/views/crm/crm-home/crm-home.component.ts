@@ -77,6 +77,13 @@ export class CrmHomeComponent implements OnInit {
       const meRes = await firstValueFrom(this.#auth.me());
       this.me = meRes?.user ?? null;
 
+      // Restrict dashboard to admin roles only
+      if (this.me && String(this.me.role || '').toLowerCase() === 'patient') {
+        this.error = 'No tienes permisos para ver el dashboard.';
+        this.isLoading = false;
+        return;
+      }
+
       // Sales dashboard (current month)
       const now = new Date();
       const dateFrom = new Date(now.getFullYear(), now.getMonth(), 1);

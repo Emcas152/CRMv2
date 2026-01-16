@@ -53,7 +53,7 @@ class RateLimiter
         ]
     ];
     
-    public function __construct(PDO $db = null)
+    public function __construct($db = null)
     {
         $this->db = $db ?? Database::getInstance();
     }

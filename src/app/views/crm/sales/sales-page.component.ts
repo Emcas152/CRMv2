@@ -1,26 +1,16 @@
 import { Component, ElementRef, OnDestroy, OnInit, ViewChild, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { FormArray, FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { DecimalPipe } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 
-import {
-  AlertComponent,
-  ButtonDirective,
-  CardBodyComponent,
-  CardComponent,
-  CardHeaderComponent,
-  ColComponent,
-  FormControlDirective,
-  FormDirective,
-  FormLabelDirective,
-  FormSelectDirective,
-  RowComponent,
-  TableDirective
-} from '@coreui/angular';
+import { AlertComponent, ButtonDirective,  CardBodyComponent,  CardComponent,  CardHeaderComponent,  ColComponent,  FormControlDirective,  FormDirective,  FormLabelDirective,  FormSelectDirective,  RowComponent,  TableDirective} from '@coreui/angular';
 
 import { BrowserQRCodeReader, IScannerControls } from '@zxing/browser';
 
 import { CreateSaleRequest, Sale, SalesService, UpdateSaleRequest } from '../../../core/services/sales.service';
 import { Id, PaymentMethod } from '../../../core/services/api.models';
+import { ProductsService, Product } from '../../../core/services/products.service';
 import { QrService } from '../../../core/services/qr.service';
 import { PatientsService } from '../../../core/services/patients.service';
 
@@ -30,24 +20,23 @@ import { PatientsService } from '../../../core/services/patients.service';
   standalone: true,
   imports: [
     ReactiveFormsModule,
+    CommonModule,
     RowComponent,
     ColComponent,
     CardComponent,
     CardHeaderComponent,
     CardBodyComponent,
-    TableDirective,
     ButtonDirective,
-    AlertComponent,
-    FormDirective,
-    FormLabelDirective,
-    FormControlDirective,
-    FormSelectDirective
+    DecimalPipe
   ]
+  ,
+  styleUrls: ['./sales-page.component.scss']
 })
 export class SalesPageComponent implements OnInit, OnDestroy {
   readonly #sales = inject(SalesService);
   readonly #fb = inject(FormBuilder);
   readonly #qr = inject(QrService);
+  readonly #products = inject(ProductsService);
   readonly #patients = inject(PatientsService);
 
   @ViewChild('saleVideoEl') saleVideoEl?: ElementRef<HTMLVideoElement>;
@@ -62,6 +51,12 @@ export class SalesPageComponent implements OnInit, OnDestroy {
   rowStatusById: Partial<Record<string, string>> = {};
   total = 0;
   sales: Sale[] = [];
+  products: Product[] = [];
+  productSearch = '';
+
+  // Simple cart model for TPV
+  cart: Array<{ product: Product; quantity: number }> = [];
+  taxPercent = 0.0825;
 
   isSaving = false;
   editingId: Id | null = null;
@@ -114,7 +109,16 @@ export class SalesPageComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
-    void this.refresh();
+    void Promise.all([this.refresh(), this.loadProducts()]);
+  }
+
+  async loadProducts(): Promise<void> {
+    try {
+      const res = await firstValueFrom(this.#products.list({ per_page: 200 }));
+      this.products = Array.isArray(res.data) ? res.data : [];
+    } catch (err: any) {
+      // ignore for now or set an error
+    }
   }
 
   ngOnDestroy(): void {
@@ -196,6 +200,74 @@ export class SalesPageComponent implements OnInit, OnDestroy {
       this.error = this.#formatError(err);
     } finally {
       this.isLoading = false;
+    }
+  }
+
+  addToCart(p: Product): void {
+    const idx = this.cart.findIndex(c => c.product.id === p.id);
+    if (idx >= 0) {
+      this.cart[idx].quantity += 1;
+    } else {
+      this.cart.push({ product: p, quantity: 1 });
+    }
+  }
+
+  onProductSearch(value: string): void {
+    this.productSearch = value ?? '';
+  }
+
+  get filteredProducts(): Product[] {
+    const term = this.productSearch.trim().toLowerCase();
+    if (!term) return this.products;
+    return this.products.filter(p => {
+      const name = String(p.name ?? '').toLowerCase();
+      const type = String(p.type ?? '').toLowerCase();
+      return name.includes(term) || type.includes(term);
+    });
+  }
+
+  removeCartItem(index: number): void {
+    this.cart.splice(index, 1);
+  }
+
+  changeQty(index: number, qty: number): void {
+    if (qty <= 0) { this.removeCartItem(index); return; }
+    this.cart[index].quantity = qty;
+  }
+
+  get cartSubtotal(): number {
+    return this.cart.reduce((s, it) => s + (Number(it.product.price || 0) * it.quantity), 0);
+  }
+
+  get cartTax(): number {
+    return Math.round(this.cartSubtotal * this.taxPercent * 100) / 100;
+  }
+
+  get cartTotal(): number {
+    return Math.round((this.cartSubtotal + this.cartTax) * 100) / 100;
+  }
+
+  async completePurchase(): Promise<void> {
+    if (!this.cart.length) return;
+    this.isSaving = true;
+    try {
+      const items = this.cart.map(c => ({ product_id: c.product.id as Id, price: c.product.price, quantity: c.quantity }));
+      const payload: CreateSaleRequest = {
+        patient_id: Number(this.form.controls.patient_id.value) as Id,
+        payment_method: this.form.controls.payment_method.value,
+        discount: Number(this.form.controls.discount.value) || 0,
+        notes: this.form.controls.notes.value || undefined,
+        loyalty_points: Number(this.form.controls.loyalty_points.value) || 0,
+        items
+      };
+      await firstValueFrom(this.#sales.create(payload));
+      this.cart = [];
+      this.actionInfo = 'Compra completada.';
+      await this.refresh();
+    } catch (err: any) {
+      this.submitError = this.#formatError(err);
+    } finally {
+      this.isSaving = false;
     }
   }
 
@@ -329,5 +401,9 @@ export class SalesPageComponent implements OnInit, OnDestroy {
     const message = err?.error?.message ?? err?.message;
     if (typeof message === 'string' && message.trim().length) return message;
     return 'No se pudieron cargar las ventas.';
+  }
+
+  trackByProduct(_idx: number, p: Product): number | string {
+    return p.id;
   }
 }

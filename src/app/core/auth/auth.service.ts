@@ -39,10 +39,26 @@ export class AuthService {
   readonly #tokenStorage = inject(TokenStorageService);
 
   login(email: string, password: string): Observable<LoginResponse> {
+    const deviceName = (typeof navigator !== 'undefined' && (navigator as any).userAgent)
+      ? (navigator as any).userAgent
+      : 'web';
+
+    const body = {
+      email,
+      // include `login` for compatibility with clients/backends that use that key
+      login: email,
+      password,
+      deviceName
+    };
+
+    // debug helper: shows exactly what's sent (remove in production if desired)
+    // eslint-disable-next-line no-console
+    console.log('[AuthService] login payload', body);
+
     return this.#api
       .request<LoginResponse>('/auth/login', {
         method: 'POST',
-        body: { email, password }
+        body
       })
       .pipe(
         tap((res) => this.#tokenStorage.setToken(res.token))

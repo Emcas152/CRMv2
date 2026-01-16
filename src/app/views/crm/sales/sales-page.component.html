@@ -1,229 +1,77 @@
 <c-row>
   <c-col xs="12">
     <c-card class="mb-4">
-      <c-card-header class="d-flex justify-content-between align-items-center">
-        <div>
-          <strong>Ventas</strong>
-          <small class="text-body-secondary ms-2">Total: {{ total }}</small>
-        </div>
-        <div class="d-flex gap-2">
-          <button cButton color="secondary" type="button" (click)="startCreate()" [disabled]="isSaving || isLoading">
-            Nuevo
-          </button>
-          <button cButton color="primary" type="button" (click)="refresh()" [disabled]="isLoading">
-            {{ isLoading ? 'Cargando…' : 'Refrescar' }}
-          </button>
-        </div>
-      </c-card-header>
       <c-card-body>
-        @if (error) {
-          <c-alert color="danger" class="mb-3">{{ error }}</c-alert>
-        }
-
-        @if (submitError) {
-          <c-alert color="danger" class="mb-3">{{ submitError }}</c-alert>
-        }
-
-        @if (actionInfo) {
-          <c-alert color="success" class="mb-3">{{ actionInfo }}</c-alert>
-        }
-
-        <form cForm class="mb-4" [formGroup]="filterForm" (ngSubmit)="refresh()">
-          <div class="mb-2"><strong>Filtros</strong></div>
-          <c-row class="g-3">
-            <c-col md="2">
-              <label cLabel for="f_patient_id">ID de paciente</label>
-              <input id="f_patient_id" cFormControl type="number" formControlName="patient_id" />
-            </c-col>
-            <c-col md="2">
-              <label cLabel for="f_status">Estado</label>
-              <input id="f_status" cFormControl type="text" formControlName="status" />
-            </c-col>
-            <c-col md="2">
-              <label cLabel for="f_payment_method">Pago</label>
-              <select id="f_payment_method" cSelect formControlName="payment_method">
-                <option value="">(cualquiera)</option>
-                @for (pm of paymentMethods; track pm) {
-                  <option [value]="pm">{{ pm }}</option>
-                }
-              </select>
-            </c-col>
-            <c-col md="2">
-              <label cLabel for="f_date_from">Desde</label>
-              <input id="f_date_from" cFormControl type="date" formControlName="date_from" />
-            </c-col>
-            <c-col md="2">
-              <label cLabel for="f_date_to">Hasta</label>
-              <input id="f_date_to" cFormControl type="date" formControlName="date_to" />
-            </c-col>
-            <c-col md="2">
-              <label cLabel for="f_per_page">Por página</label>
-              <input id="f_per_page" cFormControl type="number" min="1" max="200" formControlName="per_page" />
-            </c-col>
-            <c-col xs="12" class="d-flex gap-2">
-              <button cButton color="primary" type="submit" [disabled]="isLoading">
-                {{ isLoading ? 'Cargando…' : 'Aplicar' }}
-              </button>
-              <button cButton color="secondary" type="button" (click)="prevPage()" [disabled]="isLoading">
-                Anterior
-              </button>
-              <button cButton color="secondary" type="button" (click)="nextPage()" [disabled]="isLoading">
-                Siguiente
-              </button>
-              <div class="text-body-secondary small align-self-center">
-                Página: {{ filterForm.controls.page.value }}
+        <div class="d-flex" style="gap: 1rem;">
+          <!-- Products area -->
+          <div class="products-area" style="flex: 1 1 0;">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <div>
+                <strong>TPV</strong>
+                <div class="small text-body-secondary">Productos</div>
               </div>
-            </c-col>
-          </c-row>
-        </form>
+              <div class="d-flex gap-2">
+                <input type="search" placeholder="Buscar producto…" class="form-control form-control-sm" (input)="onProductSearch($any($event.target).value)" />
+                <button cButton color="secondary" type="button" (click)="refresh()">Refrescar</button>
+              </div>
+            </div>
 
-        <form cForm class="mb-4" [formGroup]="form" (ngSubmit)="save()">
-          <div class="mb-2">
-            <strong>{{ editingId === null ? 'Crear venta' : 'Editar venta #' + editingId }}</strong>
+            <div class="d-flex flex-wrap products-grid" style="gap:1rem;">
+              <ng-container *ngIf="filteredProducts.length; else noProducts">
+                <c-card *ngFor="let p of filteredProducts; trackBy: trackByProduct" class="product-card">
+                  <c-card-body class="d-flex flex-column justify-content-between">
+                    <div>
+                      <div class="fw-semibold">{{ p.name }}</div>
+                      <div class="small text-body-secondary">{{ p.type }}</div>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center">
+                      <div class="fs-5 fw-bold">Q{{ p.price | number:'1.2-2' }}</div>
+                      <button cButton color="dark" size="sm" type="button" (click)="addToCart(p)">Añadir</button>
+                    </div>
+                  </c-card-body>
+                </c-card>
+              </ng-container>
+              <ng-template #noProducts>
+                <div class="text-body-secondary">No hay productos.</div>
+              </ng-template>
+            </div>
           </div>
 
-          @if (editingId === null) {
-            <div class="mb-3">
-              @if (cameraError) {
-                <c-alert color="danger" class="mb-3">{{ cameraError }}</c-alert>
-              }
-
-              <div class="d-flex gap-2 align-items-center">
-                <button cButton color="secondary" type="button" (click)="startCamera()" [disabled]="isCameraActive">
-                  Escanear QR (cámara)
-                </button>
-                <button cButton color="secondary" type="button" (click)="stopCamera()" [disabled]="!isCameraActive">
-                  Detener
-                </button>
-                @if (scannedQrCode) {
-                  <div class="small text-body-secondary">QR: {{ scannedQrCode }}</div>
-                }
-              </div>
-
-              @if (isCameraActive) {
-                <div class="mt-3">
-                  <video #saleVideoEl style="width: 100%; max-width: 520px;" autoplay muted playsinline></video>
+          <!-- Cart area -->
+          <div style="width: 320px;">
+            <c-card class="position-sticky cart-card" style="top:1rem;">
+              <c-card-header>
+                <strong>Carrito</strong>
+              </c-card-header>
+              <c-card-body>
+                <div *ngIf="!cart.length" class="text-body-secondary">El carrito está vacío.</div>
+                <div *ngIf="cart.length" class="d-flex flex-column" style="gap:0.5rem;">
+                  <div *ngFor="let c of cart; let i = index" class="d-flex justify-content-between align-items-center">
+                    <div>
+                      <div class="fw-semibold">{{ c.product.name }}</div>
+                      <div class="small text-body-secondary">Q{{ c.product.price | number:'1.2-2' }}</div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                      <input type="number" class="form-control form-control-sm" style="width:72px;" [value]="c.quantity" (change)="changeQty(i, $any($event.target).valueAsNumber)" />
+                      <button cButton color="danger" size="sm" type="button" (click)="removeCartItem(i)">X</button>
+                    </div>
+                  </div>
                 </div>
-              }
-            </div>
-          }
 
-          <c-row class="g-3">
-            <c-col md="2">
-              <label cLabel for="patient_id">ID de paciente</label>
-              <input id="patient_id" cFormControl type="number" formControlName="patient_id" />
-              @if (form.controls.patient_id.touched && form.controls.patient_id.invalid) {
-                <div class="text-danger small mt-1">Requerido.</div>
-              }
-            </c-col>
-            <c-col md="3">
-              <label cLabel for="payment_method">Método de pago</label>
-              <select id="payment_method" cSelect formControlName="payment_method">
-                @for (pm of paymentMethods; track pm) {
-                  <option [value]="pm">{{ pm }}</option>
-                }
-              </select>
-            </c-col>
-            <c-col md="2">
-              <label cLabel for="discount">Descuento</label>
-              <input id="discount" cFormControl type="number" formControlName="discount" />
-            </c-col>
-            <c-col md="5">
-              <label cLabel for="notes">Notas</label>
-              <input id="notes" cFormControl type="text" formControlName="notes" />
-            </c-col>
+                <hr />
+                <div class="d-flex justify-content-between"><div>Subtotal</div><div>Q{{ cartSubtotal | number:'1.2-2' }}</div></div>
+                <div class="d-flex justify-content-between"><div>Impuestos ({{ (taxPercent*100) | number:'1.2-2' }}%)</div><div>Q{{ cartTax | number:'1.2-2' }}</div></div>
+                <div class="d-flex justify-content-between fw-bold mt-2"><div>Total</div><div>Q{{ cartTotal | number:'1.2-2' }}</div></div>
 
-            @if (editingId === null) {
-              <c-col md="2">
-                <label cLabel for="loyalty_points">Puntos a acumular</label>
-                <input id="loyalty_points" cFormControl type="number" formControlName="loyalty_points" />
-              </c-col>
-            }
-
-            @if (editingId === null) {
-              <c-col xs="12">
-                <div class="d-flex justify-content-between align-items-center">
-                  <strong>Ítems</strong>
-                  <button cButton color="secondary" size="sm" type="button" (click)="addItem()">Agregar ítem</button>
+                <div class="mt-3 d-grid">
+                  <button cButton color="warning" type="button" [disabled]="!cart.length || isSaving" (click)="completePurchase()">Completar Compra</button>
                 </div>
-              </c-col>
-
-              @for (g of itemsArray.controls; track $index) {
-                <c-col md="4" [formGroup]="$any(g)">
-                  <label cLabel>ID de producto</label>
-                  <input cFormControl type="number" formControlName="product_id" />
-                </c-col>
-                <c-col md="4" [formGroup]="$any(g)">
-                  <label cLabel>Precio</label>
-                  <input cFormControl type="number" formControlName="price" />
-                </c-col>
-                <c-col md="3" [formGroup]="$any(g)">
-                  <label cLabel>Cant.</label>
-                  <input cFormControl type="number" formControlName="quantity" />
-                </c-col>
-                <c-col md="1" class="d-flex align-items-end">
-                  <button cButton color="danger" size="sm" type="button" (click)="removeItem($index)" [disabled]="itemsArray.length <= 1">
-                    X
-                  </button>
-                </c-col>
-              }
-            } @else {
-              <c-col md="3">
-                <label cLabel for="status">Estado</label>
-                <input id="status" cFormControl type="text" formControlName="status" placeholder="pending|paid|..." />
-              </c-col>
-            }
-
-            <c-col xs="12" class="d-flex gap-2">
-              <button cButton color="success" type="submit" [disabled]="isSaving">
-                {{ isSaving ? 'Guardando…' : (editingId === null ? 'Crear' : 'Guardar') }}
-              </button>
-              @if (editingId !== null) {
-                <button cButton color="secondary" type="button" (click)="cancelEdit()" [disabled]="isSaving">
-                  Cancelar
-                </button>
-              }
-            </c-col>
-          </c-row>
-        </form>
-
-        <table cTable [striped]="true">
-          <thead>
-            <tr>
-              <th scope="col">ID</th>
-              <th scope="col">Paciente</th>
-              <th scope="col">Pago</th>
-              <th scope="col">Estado</th>
-              <th scope="col">Ítems</th>
-              <th scope="col">Creado</th>
-              <th scope="col">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (s of sales; track s.id) {
-              <tr>
-                <td>{{ s.id }}</td>
-                <td>{{ s.patient_id }}</td>
-                <td>{{ s.payment_method }}</td>
-                <td>{{ s.status ?? '' }}</td>
-                <td>{{ s.items.length }}</td>
-                <td>{{ s.created_at ?? '' }}</td>
-                <td class="d-flex gap-2">
-                  <button cButton color="secondary" size="sm" type="button" (click)="startEdit(s)" [disabled]="actingId === s.id">Editar</button>
-                  <button cButton color="danger" size="sm" type="button" (click)="delete(s)" [disabled]="actingId === s.id">Eliminar</button>
-                  @if (rowStatusById[s.id]) {
-                    <span class="small text-body-secondary align-self-center">{{ rowStatusById[s.id] }}</span>
-                  }
-                </td>
-              </tr>
-            } @empty {
-              <tr>
-                <td colspan="7" class="text-center text-body-secondary">Sin datos</td>
-              </tr>
-            }
-          </tbody>
-        </table>
+              </c-card-body>
+            </c-card>
+          </div>
+        </div>
       </c-card-body>
     </c-card>
   </c-col>
 </c-row>
+

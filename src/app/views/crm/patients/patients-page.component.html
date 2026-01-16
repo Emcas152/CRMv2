@@ -1,85 +1,34 @@
 <c-row>
   <c-col xs="12">
     <c-card class="mb-4">
-      <c-card-header class="d-flex justify-content-between align-items-center">
-        <div>
-          <strong>Pacientes</strong>
-          <small class="text-body-secondary ms-2">Total: {{ total }}</small>
+      <c-card-header class="patients-header align-items-center">
+        <div class="patients-title">
+          <h2 class="mb-0">Pacientes</h2>
+          <div class="text-body-secondary small">Total: {{ total }}</div>
         </div>
-        <div class="d-flex gap-2">
-          <button cButton color="secondary" type="button" (click)="startCreate()" [disabled]="isSaving || isLoading">
-            Nuevo
-          </button>
-          <button cButton color="primary" type="button" (click)="refresh()" [disabled]="isLoading">
-            {{ isLoading ? 'Cargando…' : 'Refrescar' }}
-          </button>
+
+        <div class="d-flex align-items-center gap-3">
+          <form [formGroup]="filterForm" (ngSubmit)="refresh()" class="d-flex gap-2 align-items-center">
+            <input class="form-control form-control-sm" placeholder="Buscar paciente" formControlName="search" />
+            <button cButton color="primary" size="sm" type="submit" [disabled]="isLoading">{{ isLoading ? 'Cargando…' : 'Buscar' }}</button>
+          </form>
+          <button cButton color="warning" class="btn-lg rounded-pill" type="button" (click)="startCreate()" [disabled]="isSaving || isLoading">Nuevo Paciente</button>
         </div>
       </c-card-header>
+
       <c-card-body>
-        @if (error) {
-          <c-alert color="danger" class="mb-3">{{ error }}</c-alert>
-        }
+        <c-alert *ngIf="error" color="danger" class="mb-3">{{ error }}</c-alert>
+        <c-alert *ngIf="submitError" color="danger" class="mb-3">{{ submitError }}</c-alert>
+        <c-alert *ngIf="actionError" color="danger" class="mb-3">{{ actionError }}</c-alert>
+        <c-alert *ngIf="actionInfo" color="success" class="mb-3">{{ actionInfo }}</c-alert>
 
-        @if (submitError) {
-          <c-alert color="danger" class="mb-3">{{ submitError }}</c-alert>
-        }
+        <div *ngIf="qrResult" class="mb-3">
+          <div class="small text-body-secondary">QR paciente #{{ qrResult.patient_id }}</div>
+          <div *ngIf="qrResult.qr_url" class="small">URL: <a [href]="qrResult.qr_url" target="_blank" rel="noreferrer">{{ qrResult.qr_url }}</a></div>
+          <pre class="small mb-0">{{ qrResult.qr_code }}</pre>
+        </div>
 
-        @if (actionError) {
-          <c-alert color="danger" class="mb-3">{{ actionError }}</c-alert>
-        }
-
-        @if (actionInfo) {
-          <c-alert color="success" class="mb-3">{{ actionInfo }}</c-alert>
-        }
-
-        @if (qrResult) {
-          <div class="mb-3">
-            <div class="small text-body-secondary">QR paciente #{{ qrResult.patient_id }}</div>
-            @if (qrResult.qr_url) {
-              <div class="small">URL: <a [href]="qrResult.qr_url" target="_blank" rel="noreferrer">{{ qrResult.qr_url }}</a></div>
-            }
-            <pre class="small mb-0">{{ qrResult.qr_code }}</pre>
-          </div>
-        }
-
-        <form cForm class="mb-4" [formGroup]="filterForm" (ngSubmit)="refresh()">
-          <div class="mb-2"><strong>Filtros</strong></div>
-          <c-row class="g-3">
-            <c-col md="4">
-              <label cLabel for="f_search">Buscar</label>
-              <input id="f_search" cFormControl type="text" formControlName="search" />
-            </c-col>
-            <c-col md="2">
-              <label cLabel for="f_birthday_month">Mes de nacimiento</label>
-              <input id="f_birthday_month" cFormControl type="text" formControlName="birthday_month" placeholder="1-12" />
-            </c-col>
-            <c-col md="2">
-              <label cLabel for="f_date_from">Desde</label>
-              <input id="f_date_from" cFormControl type="date" formControlName="date_from" />
-            </c-col>
-            <c-col md="2">
-              <label cLabel for="f_date_to">Hasta</label>
-              <input id="f_date_to" cFormControl type="date" formControlName="date_to" />
-            </c-col>
-            <c-col md="2">
-              <label cLabel for="f_per_page">Por página</label>
-              <input id="f_per_page" cFormControl type="number" min="1" max="200" formControlName="per_page" />
-            </c-col>
-            <c-col xs="12" class="d-flex gap-2">
-              <button cButton color="primary" type="submit" [disabled]="isLoading">
-                {{ isLoading ? 'Cargando…' : 'Aplicar' }}
-              </button>
-              <button cButton color="secondary" type="button" (click)="prevPage()" [disabled]="isLoading">
-                Anterior
-              </button>
-              <button cButton color="secondary" type="button" (click)="nextPage()" [disabled]="isLoading">
-                Siguiente
-              </button>
-              <div class="text-body-secondary small align-self-center">Página: {{ filterForm.controls.page.value }}</div>
-            </c-col>
-          </c-row>
-        </form>
-
+        <!-- Create / Edit form -->
         <form cForm class="mb-4" [formGroup]="form" (ngSubmit)="save()">
           <div class="mb-2">
             <strong>{{ editingId === null ? 'Crear paciente' : 'Editar paciente #' + editingId }}</strong>
@@ -88,16 +37,12 @@
             <c-col md="4">
               <label cLabel for="name">Nombre</label>
               <input id="name" cFormControl type="text" formControlName="name" />
-              @if (form.controls.name.touched && form.controls.name.invalid) {
-                <div class="text-danger small mt-1">Nombre requerido.</div>
-              }
+              <div *ngIf="form.controls.name.touched && form.controls.name.invalid" class="text-danger small mt-1">Nombre requerido.</div>
             </c-col>
             <c-col md="4">
               <label cLabel for="email">Email</label>
               <input id="email" cFormControl type="email" formControlName="email" />
-              @if (form.controls.email.touched && form.controls.email.invalid) {
-                <div class="text-danger small mt-1">Email válido requerido.</div>
-              }
+              <div *ngIf="form.controls.email.touched && form.controls.email.invalid" class="text-danger small mt-1">Email válido requerido.</div>
             </c-col>
             <c-col md="4">
               <label cLabel for="phone">Teléfono</label>
@@ -118,18 +63,13 @@
             </c-col>
 
             <c-col xs="12" class="d-flex gap-2">
-              <button cButton color="success" type="submit" [disabled]="isSaving">
-                {{ isSaving ? 'Guardando…' : (editingId === null ? 'Crear' : 'Guardar') }}
-              </button>
-              @if (editingId !== null) {
-                <button cButton color="secondary" type="button" (click)="cancelEdit()" [disabled]="isSaving">
-                  Cancelar
-                </button>
-              }
+              <button cButton color="success" type="submit" [disabled]="isSaving">{{ isSaving ? 'Guardando…' : (editingId === null ? 'Crear' : 'Guardar') }}</button>
+              <button *ngIf="editingId !== null" cButton color="secondary" type="button" (click)="cancelEdit()" [disabled]="isSaving">Cancelar</button>
             </c-col>
           </c-row>
         </form>
 
+        <!-- Patients table -->
         <table cTable [striped]="true">
           <thead>
             <tr>
@@ -142,63 +82,35 @@
             </tr>
           </thead>
           <tbody>
-            @for (p of patients; track p.id) {
-              <tr>
+            <ng-container *ngIf="patients.length; else empty">
+              <tr *ngFor="let p of patients; trackBy: trackByPatient">
                 <td>{{ p.id }}</td>
                 <td>{{ p.name }}</td>
                 <td>{{ p.email }}</td>
                 <td>{{ p.phone ?? '' }}</td>
                 <td>{{ p.nit ?? '' }}</td>
-                <td class="d-flex flex-wrap gap-2">
+                <td class="d-flex flex-wrap gap-2 align-items-center">
                   <button cButton color="secondary" size="sm" type="button" (click)="startEdit(p)">Editar</button>
                   <button cButton color="danger" size="sm" type="button" (click)="delete(p)">Eliminar</button>
                   <button cButton color="info" size="sm" type="button" (click)="showQr(p)" [disabled]="actingId === p.id">QR</button>
 
-                  <input
-                    class="form-control form-control-sm"
-                    style="width: 110px"
-                    type="number"
-                    min="1"
-                    placeholder="Puntos"
-                    [value]="loyaltyPointsById[p.id] ?? ''"
-                    (input)="setLoyaltyPoints(p, $any($event.target).value)"
-                  />
-                  <button cButton color="success" size="sm" type="button" (click)="loyaltyAdd(p)" [disabled]="actingId === p.id">
-                    +Pts
-                  </button>
-                  <button cButton color="warning" size="sm" type="button" (click)="loyaltyRedeem(p)" [disabled]="actingId === p.id">
-                    -Pts
-                  </button>
+                  <input class="form-control form-control-sm" style="width: 110px" type="number" min="1" placeholder="Puntos"
+                    [value]="loyaltyPointsById[p.id] ?? ''" (input)="setLoyaltyPoints(p, $any($event.target).value)" />
+                  <button cButton color="success" size="sm" type="button" (click)="loyaltyAdd(p)" [disabled]="actingId === p.id">+Pts</button>
+                  <button cButton color="warning" size="sm" type="button" (click)="loyaltyRedeem(p)" [disabled]="actingId === p.id">-Pts</button>
 
-                  <input
-                    class="form-control form-control-sm"
-                    style="width: 170px"
-                    type="file"
-                    accept="image/*"
-                    (change)="uploadPhoto(p, $event, 'before')"
-                    [disabled]="actingId === p.id"
-                    title="Subir antes"
-                  />
-                  <input
-                    class="form-control form-control-sm"
-                    style="width: 170px"
-                    type="file"
-                    accept="image/*"
-                    (change)="uploadPhoto(p, $event, 'after')"
-                    [disabled]="actingId === p.id"
-                    title="Subir después"
-                  />
+                  <input class="form-control form-control-sm" style="width: 170px" type="file" accept="image/*" (change)="uploadPhoto(p, $event, 'before')" [disabled]="actingId === p.id" title="Subir antes" />
+                  <input class="form-control form-control-sm" style="width: 170px" type="file" accept="image/*" (change)="uploadPhoto(p, $event, 'after')" [disabled]="actingId === p.id" title="Subir después" />
 
-                  @if (rowStatusById[p.id]) {
-                    <span class="small text-body-secondary align-self-center">{{ rowStatusById[p.id] }}</span>
-                  }
+                  <span *ngIf="rowStatusById[p.id]" class="small text-body-secondary align-self-center">{{ rowStatusById[p.id] }}</span>
                 </td>
               </tr>
-            } @empty {
+            </ng-container>
+            <ng-template #empty>
               <tr>
                 <td colspan="6" class="text-center text-body-secondary">Sin datos</td>
               </tr>
-            }
+            </ng-template>
           </tbody>
         </table>
       </c-card-body>

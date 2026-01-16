@@ -73,6 +73,19 @@ class Auth
         return $payload;
     }
 
+    /**
+     * Parses a token and returns the payload or throws on invalid/expired token.
+     * Used by controllers that expect an exception-based flow.
+     */
+    public static function parseToken($token): array
+    {
+        $payload = self::verifyToken($token);
+        if (!$payload || !is_array($payload)) {
+            throw new \Exception('Token expirado o inválido');
+        }
+        return $payload;
+    }
+
     public static function getTokenFromHeader()
     {
         error_log('=== TOKEN DEBUG ===');
@@ -103,6 +116,28 @@ class Auth
         }
 
         return null;
+    }
+
+    /**
+     * Convenience helper: extracts Bearer token and returns user_id or null.
+     */
+    public static function getUserIdFromToken(): ?int
+    {
+        $token = self::getTokenFromHeader();
+        if (!$token) {
+            return null;
+        }
+
+        $payload = self::verifyToken($token);
+        if (!$payload || !is_array($payload)) {
+            return null;
+        }
+
+        $id = $payload['user_id'] ?? null;
+        if ($id === null) {
+            return null;
+        }
+        return intval($id) ?: null;
     }
 
     public static function getCurrentUser()

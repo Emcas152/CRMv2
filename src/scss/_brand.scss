@@ -1,0 +1,50 @@
+// Brand tokens placeholder file
+// Replace the hex values and font-family with the exact tokens from
+// the provided 'Brandbook V Medical Spa.pdf'.
+
+@use "@coreui/coreui/scss/mixins/color-mode" as *;
+
+:root {
+  /* Colors extracted from Brandbook (RGB values in PDF XMP)
+     Primary / Indigo: RGB(49,39,131) -> #312783
+     Accent / Yellow: RGB(255,237,0) -> #FFED00
+     Neutral light: RGB(245,245,247) -> #F5F5F7
+  */
+  --brand-primary: #312783;
+  --brand-secondary: #F5F5F7;
+  --brand-accent: #FFED00;
+  --brand-accent-dark: #D4A41F;
+  --brand-bg: #FFFFFF;
+  --brand-surface: #FFFFFF;
+  --brand-muted: #6C757D;
+  --brand-text: #1D1D1B; /* from Grises C=0 M=0 Y=0 K=100 -> RGB(29,29,27) */
+
+  /* Typography (from XMP fonts: Montserrat family) */
+  --brand-font-primary: 'Montserrat', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --brand-font-heading: 'Montserrat', var(--brand-font-primary);
+
+  /* Use existing logo files in src/assets/brand */
+  --brand-logo: '/assets/brand/coreui-base.svg';
+  --brand-logo-mark: '/assets/brand/coreui-signet.svg';
+
+  /* Map to CoreUI CSS vars used by the theme */
+  --cui-primary: var(--brand-primary);
+  --cui-info: var(--brand-secondary);
+  --cui-warning: var(--brand-accent);
+}
+
+@include color-mode(light) {
+  --cui-body-bg: var(--brand-bg);
+  --cui-body-color: var(--brand-text);
+}
+
+/* Optionally load fonts here — replace URLs with the ones from the brandbook */
+/*
+@font-face {
+  font-family: 'BrandPrimary';
+  src: url('/assets/fonts/BrandPrimary-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+*/

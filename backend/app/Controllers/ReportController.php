@@ -26,7 +26,7 @@ class ReportController
 
             // Exportación restringida a roles operacionales
             \App\Core\Auth::requireAnyRole(
-                ['superadmin', 'admin', 'doctor', 'staff'],
+                ['superadmin', 'admin'],
                 'No tienes permisos para exportar datos'
             );
 

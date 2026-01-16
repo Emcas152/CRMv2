@@ -61,4 +61,14 @@ body {
   .footer {
     --cui-footer-bg: var(--cui-body-bg);
   }
+
+  // Make header/navbar adapt to dark mode
+  .header > .container-fluid,
+  .header .c-container,
+  .header > .container-fluid + .container-fluid {
+    background-color: var(--cui-dark-bg);
+    color: var(--cui-body-color);
+    // lighter border for separation in dark mode
+    border-bottom-color: rgba(255,255,255,0.06);
+  }
 }

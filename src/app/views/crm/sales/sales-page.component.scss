@@ -1,0 +1,22 @@
+.products-grid{
+  gap:1rem;
+}
+.products-grid{
+  gap:1rem;
+}
+.product-card{
+  width:220px;
+  background: var(--brand-surface);
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(90,64,120,0.06);
+}
+.cart-card{
+  background: linear-gradient(180deg, rgba(255,255,255,0.98), var(--brand-secondary));
+  border-radius: 10px;
+  padding: 0.5rem;
+}
+@media (max-width: 991px){
+  .products-area{order:2}
+  .cart-card{order:1}
+}
+.products-area .fw-semibold{font-family: var(--brand-font-heading);}

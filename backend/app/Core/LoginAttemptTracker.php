@@ -29,7 +29,7 @@ class LoginAttemptTracker
     const ATTEMPT_WINDOW = 15;           // Ventana de tiempo para contar intentos (minutos)
     const CLEANUP_AFTER_HOURS = 24;      // Limpiar intentos después de X horas
     
-    public function __construct(PDO $db = null)
+    public function __construct($db = null)
     {
         $this->db = $db ?? Database::getInstance();
     }

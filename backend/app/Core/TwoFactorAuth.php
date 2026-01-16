@@ -39,7 +39,7 @@ class TwoFactorAuth
         self::METHOD_WHATSAPP
     ];
     
-    public function __construct(PDO $db = null)
+    public function __construct($db = null)
     {
         $this->db = $db ?? Database::getInstance();
     }
@@ -465,14 +465,14 @@ class TwoFactorAuth
             // );
             
             // Por ahora, log del mensaje (reemplazar con integración real)
-            error_log(\"SMS 2FA Code to {$phone}: {$code}\");
+            error_log("SMS 2FA Code to {$phone}: {$code}");
             
             // IMPORTANTE: Retornar false hasta que se configure un proveedor real
             // return true;
             return false;
             
-        } catch (\\Exception $e) {
-            error_log(\"Error sending 2FA SMS: \" . $e->getMessage());
+        } catch (\Exception $e) {
+            error_log("Error sending 2FA SMS: " . $e->getMessage());
             return false;
         }
     }
@@ -508,14 +508,14 @@ class TwoFactorAuth
             // );
             
             // Por ahora, log del mensaje (reemplazar con integración real)
-            error_log(\"WhatsApp 2FA Code to {$phone}: {$code}\");
+            error_log("WhatsApp 2FA Code to {$phone}: {$code}");
             
             // IMPORTANTE: Retornar false hasta que se configure un proveedor real
             // return true;
             return false;
             
-        } catch (\\Exception $e) {
-            error_log(\"Error sending 2FA WhatsApp: \" . $e->getMessage());
+        } catch (\Exception $e) {
+            error_log("Error sending 2FA WhatsApp: " . $e->getMessage());
             return false;
         }
     }

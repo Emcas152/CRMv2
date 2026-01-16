@@ -61,7 +61,7 @@ class ProductsController
 
     private function index()
     {
-        \App\Core\Auth::requireAnyRole(['superadmin', 'admin', 'doctor', 'staff'], 'No tienes permisos para ver productos');
+        \App\Core\Auth::requireAnyRole(['superadmin', 'admin', 'staff'], 'No tienes permisos para ver productos');
         $db = \App\Core\Database::getInstance();
 
         $query = 'SELECT * FROM products WHERE 1=1';
@@ -93,7 +93,7 @@ class ProductsController
 
     private function show($id)
     {
-        \App\Core\Auth::requireAnyRole(['superadmin', 'admin', 'doctor', 'staff'], 'No tienes permisos para ver productos');
+        \App\Core\Auth::requireAnyRole(['superadmin', 'admin', 'staff'], 'No tienes permisos para ver productos');
         $db = \App\Core\Database::getInstance();
         $product = $db->fetchOne('SELECT * FROM products WHERE id = ?', [$id]);
 
@@ -394,3 +394,4 @@ class ProductsController
         }
     }
 }
+

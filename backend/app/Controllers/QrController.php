@@ -53,6 +53,15 @@ class QrController
             \App\Core\Response::notFound('Código QR no asociado a ningún paciente');
         }
 
+        $role = (string)($user['role'] ?? '');
+        if ($role === 'patient') {
+            $owns = (!empty($patient['user_id']) && intval($patient['user_id']) === intval($user['user_id'] ?? 0))
+                || (!empty($patient['email']) && ($user['email'] ?? null) === $patient['email']);
+            if (!$owns) {
+                \App\Core\Response::forbidden('No tienes permisos para ver este QR');
+            }
+        }
+
         $action = $input['action'] ?? 'none';
         $points = isset($input['points']) ? intval($input['points']) : 0;
 
@@ -117,3 +126,4 @@ class QrController
         }
     }
 }
+

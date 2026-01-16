@@ -25,9 +25,24 @@ class TwoFactorController
 {
     private $db;
     private $twoFactorAuth;
+
+    protected static function initCore(): void
+    {
+        require_once __DIR__ . '/../Core/helpers.php';
+        require_once __DIR__ . '/../Core/Request.php';
+        require_once __DIR__ . '/../Core/Response.php';
+        require_once __DIR__ . '/../Core/Auth.php';
+        require_once __DIR__ . '/../Core/Database.php';
+        require_once __DIR__ . '/../Core/TwoFactorAuth.php';
+        require_once __DIR__ . '/../Core/Validator.php';
+        require_once __DIR__ . '/../Core/Sanitizer.php';
+        require_once __DIR__ . '/../Core/Audit.php';
+        require_once __DIR__ . '/../Core/ErrorHandler.php';
+    }
     
     public function __construct()
     {
+        self::initCore();
         $this->db = Database::getInstance();
         $this->twoFactorAuth = new TwoFactorAuth($this->db);
     }

@@ -1,5 +1,6 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { CommonModule } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 
 import {
@@ -31,6 +32,7 @@ import { Id } from '../../../core/services/api.models';
   standalone: true,
   imports: [
     ReactiveFormsModule,
+    CommonModule,
     RowComponent,
     ColComponent,
     CardComponent,
@@ -43,6 +45,8 @@ import { Id } from '../../../core/services/api.models';
     FormLabelDirective,
     FormControlDirective
   ]
+  ,
+  styleUrls: ['./patients-page.component.scss']
 })
 export class PatientsPageComponent implements OnInit {
   readonly #patients = inject(PatientsService);
@@ -300,5 +304,9 @@ export class PatientsPageComponent implements OnInit {
     const message = err?.error?.message ?? err?.message;
     if (typeof message === 'string' && message.trim().length) return message;
     return 'No se pudieron cargar los pacientes.';
+  }
+
+  trackByPatient(_index: number, p: Patient): number | string {
+    return p.id;
   }
 }

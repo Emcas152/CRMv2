@@ -2,13 +2,13 @@
   <defs>
     <style>
       .cls-1 {
-        fill: #cf2f4c;
+        fill: var(--cui-primary);
       }
       .cls-2 {
-        fill: #e797a5;
+        fill: var(--cui-secondary);
       }
       .cls-3 {
-        fill: #3c4b64;
+        fill: var(--cui-body-color);
       }
     </style>
   </defs>

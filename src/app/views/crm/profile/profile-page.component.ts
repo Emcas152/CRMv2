@@ -1,4 +1,3 @@
-import { JsonPipe } from '@angular/common';
 import { Component, OnInit, inject } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
@@ -35,14 +34,15 @@ import * as QRCode from 'qrcode';
     AlertComponent,
     FormDirective,
     FormLabelDirective,
-    FormControlDirective,
-    JsonPipe
+    FormControlDirective
   ]
 })
 export class ProfilePageComponent implements OnInit {
   readonly #profile = inject(ProfileService);
   readonly #patients = inject(PatientsService);
   readonly #fb = inject(FormBuilder);
+
+  readonly qrSize = 420;
 
   isLoading = false;
   isSaving = false;
@@ -84,14 +84,7 @@ export class ProfilePageComponent implements OnInit {
       const email = typeof user?.email === 'string' ? user.email : '';
       this.updateForm.reset({ name, email });
 
-      // If this user is linked to a patient record, load QR
-      const patientId = Number(this.profile?.patient?.id ?? 0) || 0;
-      if (patientId > 0) {
-        await this.loadQr(patientId);
-      } else {
-        this.qrCodeText = null;
-        this.qrDataUrl = null;
-      }
+      await this.refreshQr();
     } catch (err: any) {
       this.error = this.#formatError(err);
     } finally {
@@ -99,22 +92,39 @@ export class ProfilePageComponent implements OnInit {
     }
   }
 
-  async loadQr(patientId?: number): Promise<void> {
-    const pid = Number(patientId ?? this.profile?.patient?.id ?? 0) || 0;
-    if (!pid || this.isLoadingQr) return;
+  get hasPatient(): boolean {
+    return Number((this.profile as any)?.patient?.id ?? 0) > 0;
+  }
+
+  get qrTitle(): string {
+    return this.hasPatient ? 'Mi QR ' : 'Mi QR';
+  }
+
+  async refreshQr(): Promise<void> {
+    if (this.isLoadingQr) return;
     this.isLoadingQr = true;
     this.error = null;
 
     try {
-      const qr = await firstValueFrom(this.#patients.getQr(pid));
-      this.qrCodeText = qr?.qr_code ?? null;
+      const patientId = Number((this.profile as any)?.patient?.id ?? 0) || 0;
+      if (patientId > 0) {
+        const qr = await firstValueFrom(this.#patients.getQr(patientId));
+        this.qrCodeText = qr?.qr_code ?? null;
+      } else {
+        const userId = Number((this.profile as any)?.user?.id ?? 0) || 0;
+        this.qrCodeText = userId > 0 ? `USER:${userId}` : null;
+      }
+
       if (this.qrCodeText) {
-        this.qrDataUrl = await QRCode.toDataURL(this.qrCodeText, { margin: 1, width: 280 });
+        this.qrDataUrl = await QRCode.toDataURL(this.qrCodeText, {
+          margin: 2,
+          width: this.qrSize,
+          errorCorrectionLevel: 'M'
+        });
       } else {
         this.qrDataUrl = null;
       }
     } catch (err: any) {
-      // Do not hard-fail the whole profile page if QR fails
       const msg = err?.error?.message ?? err?.message;
       this.error = typeof msg === 'string' && msg.trim().length ? msg : 'No se pudo cargar el QR.';
       this.qrCodeText = null;

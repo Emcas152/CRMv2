@@ -52,6 +52,22 @@ class Database
         return $this->connection;
     }
 
+    // Convenience passthroughs for code that expects a raw PDO instance.
+    public function prepare(string $sql, array $options = [])
+    {
+        return $this->connection->prepare($sql, $options);
+    }
+
+    public function exec(string $sql)
+    {
+        return $this->connection->exec($sql);
+    }
+
+    public function quote(string $string, int $type = PDO::PARAM_STR): string
+    {
+        return $this->connection->quote($string, $type);
+    }
+
     public function query($sql, $params = [])
     {
         try {

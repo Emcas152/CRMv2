@@ -15,7 +15,7 @@ export class ColorsComponent implements OnInit, AfterViewInit {
     Array.from(this.document.querySelectorAll('.theme-color')).forEach(
       (element: Element) => {
         const htmlElement = element as HTMLElement;
-        const background = getStyle('background-color', htmlElement) ?? '#fff';
+        const background = getStyle('background-color', htmlElement) ?? (getStyle('--cui-body-bg') || '#fff');
         const table = this.renderer.createElement('table');
         table.innerHTML = `
           <table class="table w-100">

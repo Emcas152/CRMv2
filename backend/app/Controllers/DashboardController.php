@@ -27,7 +27,7 @@ class DashboardController
             }
 
             // CRM/ops roles only
-            \App\Core\Auth::requireAnyRole(['superadmin', 'admin', 'doctor', 'staff'], 'No tienes permisos para ver estadísticas');
+            \App\Core\Auth::requireAnyRole(['superadmin', 'admin'], 'No tienes permisos para ver estadísticas');
 
             $db = \App\Core\Database::getInstance();
             $pdo = $db->getConnection();
@@ -230,3 +230,4 @@ class DashboardController
         }
     }
 }
+

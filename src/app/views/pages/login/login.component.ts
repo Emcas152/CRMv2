@@ -64,8 +64,13 @@ export class LoginComponent {
     const { email, password } = this.form.getRawValue();
 
     try {
-      await firstValueFrom(this.#auth.login(email, password));
-      await this.#router.navigateByUrl('/crm');
+      const res = await firstValueFrom(this.#auth.login(email, password));
+      const role = String(res?.user?.role ?? '').toLowerCase();
+      if (role === 'patient') {
+        await this.#router.navigateByUrl('/crm/welcome');
+      } else {
+        await this.#router.navigateByUrl('/crm');
+      }
     } catch (err: any) {
       this.submitError = this.#formatError(err);
     } finally {

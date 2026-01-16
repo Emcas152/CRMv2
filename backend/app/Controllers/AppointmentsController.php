@@ -31,16 +31,9 @@ class AppointmentsController
         $user = \App\Core\Auth::getCurrentUser();
         $role = (string)($user['role'] ?? '');
 
-        // Patients: read-only access to their own appointments
+        // Patients do not have access to appointments per role rules.
         if ($role === 'patient') {
-            if ($method === 'GET' && !$id) {
-                return $this->index($user);
-            }
-            if ($method === 'GET' && $id) {
-                return $this->show($id, $user);
-            }
-
-            \App\Core\Response::forbidden('No tienes permisos para esta acción');
+            \App\Core\Response::forbidden('No tienes permisos para acceder a citas');
         }
 
         // Staff/doctor/admin/superadmin: full module access
@@ -458,3 +451,7 @@ class AppointmentsController
         }
     }
 }
+
+
+
+
