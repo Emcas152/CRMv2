@@ -31,9 +31,19 @@ class AppointmentsController
         $user = \App\Core\Auth::getCurrentUser();
         $role = (string)($user['role'] ?? '');
 
-        // Patients do not have access to appointments per role rules.
+        // Patients: limited access (view own + request/create).
         if ($role === 'patient') {
-            \App\Core\Response::forbidden('No tienes permisos para acceder a citas');
+            if ($method === 'GET' && !$id) {
+                return $this->index($user);
+            }
+            if ($method === 'GET' && $id) {
+                return $this->show($id, $user);
+            }
+            if ($method === 'POST' && !$id) {
+                return $this->store($input, $user);
+            }
+
+            \App\Core\Response::forbidden('No tienes permisos para esta acciİn');
         }
 
         // Staff/doctor/admin/superadmin: full module access
@@ -48,7 +58,7 @@ class AppointmentsController
         }
 
         if ($method === 'POST' && !$id) {
-            return $this->store($input);
+            return $this->store($input, $user);
         }
 
         if ($method === 'PUT' && $id) {
@@ -101,13 +111,12 @@ class AppointmentsController
               WHERE 1=1';
         $params = [];
 
+        $patientId = null;
         if ($role === 'patient') {
             $patientId = $this->getPatientIdForUser($user, $db);
             if (!$patientId) {
                 \App\Core\Response::success(['data' => [], 'total' => 0]);
             }
-            $query .= ' AND a.patient_id = ?';
-            $params[] = $patientId;
         }
 
         if (isset($_GET['date'])) {
@@ -125,7 +134,7 @@ class AppointmentsController
             $params[] = $_GET['date_to'];
         }
 
-        if (isset($_GET['patient_id'])) {
+        if (isset($_GET['patient_id']) && $role !== 'patient') {
             $query .= ' AND a.patient_id = ?';
             $params[] = $_GET['patient_id'];
         }
@@ -143,6 +152,20 @@ class AppointmentsController
         $query .= ' ORDER BY a.appointment_date ASC, a.appointment_time ASC';
 
         $appointments = $db->fetchAll($query, $params);
+
+        if ($role === 'patient' && $patientId) {
+            foreach ($appointments as &$appt) {
+                if (intval($appt['patient_id'] ?? 0) !== $patientId) {
+                    $appt['patient_id'] = 0;
+                    $appt['patient_name'] = null;
+                    $appt['patient_email'] = null;
+                    $appt['service'] = 'Ocupado';
+                    $appt['notes'] = null;
+                    $appt['staff_member_id'] = null;
+                }
+            }
+        }
+
         \App\Core\Response::success(['data' => $appointments, 'total' => count($appointments)]);
     }
 
@@ -177,10 +200,11 @@ class AppointmentsController
         \App\Core\Response::success($appointment);
     }
 
-    private function store($input)
+    private function store($input, $user = null)
     {
-        $user = \App\Core\Auth::getCurrentUser();
-        if (!in_array($user['role'], ['superadmin', 'admin', 'doctor', 'staff'], true)) {
+        $user = $user ?: \App\Core\Auth::getCurrentUser();
+        $role = (string)($user['role'] ?? '');
+        if (!in_array($role, ['superadmin', 'admin', 'doctor', 'staff', 'patient'], true)) {
             \App\Core\Response::forbidden('No tienes permisos para crear citas');
         }
 
@@ -201,22 +225,49 @@ class AppointmentsController
         }
 
         $db = \App\Core\Database::getInstance();
+        $patientIdForUser = null;
+        if ($role === 'patient') {
+            $patientIdForUser = $this->getPatientIdForUser($user, $db);
+            if (!$patientIdForUser) {
+                \App\Core\Response::forbidden('No tienes permisos para crear citas');
+            }
+        }
 
         try {
             $dateParts = explode(' ', $input['appointment_date']);
             $dateOnly = $dateParts[0];
 
+            $appointmentTime = (string)$input['appointment_time'];
+            $existing = $db->fetchOne(
+                'SELECT id FROM appointments WHERE appointment_date = ? AND appointment_time = ? LIMIT 1',
+                [$dateOnly, $appointmentTime]
+            );
+            if ($existing) {
+                \App\Core\Response::conflict('Horario ocupado');
+            }
+
+            $patientId = $input['patient_id'];
+            $status = $input['status'] ?? 'pending';
+            $staffMemberId = $input['staff_member_id'] ?? null;
+            $notes = $input['notes'] ?? null;
+
+            if ($role === 'patient') {
+                $patientId = $patientIdForUser;
+                $status = 'pending';
+                $staffMemberId = null;
+            }
+
             $db->execute(
                 'INSERT INTO appointments (patient_id, staff_member_id, appointment_date, appointment_time, service, notes, status, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
                 [
-                    $input['patient_id'],
-                    $input['staff_member_id'] ?? null,
+                    $patientId,
+                    $staffMemberId,
                     $dateOnly,
-                    $input['appointment_time'],
+                    $appointmentTime,
                     $input['service'],
-                    $input['notes'] ?? null,
-                    $input['status'] ?? 'pending'
+                    $notes,
+                    $status
                 ]
             );
 

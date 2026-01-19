@@ -1,6 +1,7 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
+import { CommonModule } from '@angular/common';
 
 import {
   AlertComponent,
@@ -24,17 +25,14 @@ import * as QRCode from 'qrcode';
   templateUrl: './profile-page.component.html',
   standalone: true,
   imports: [
+    CommonModule,
     ReactiveFormsModule,
     RowComponent,
     ColComponent,
     CardComponent,
     CardHeaderComponent,
     CardBodyComponent,
-    ButtonDirective,
-    AlertComponent,
-    FormDirective,
-    FormLabelDirective,
-    FormControlDirective
+    ButtonDirective
   ]
 })
 export class ProfilePageComponent implements OnInit {
@@ -49,6 +47,12 @@ export class ProfilePageComponent implements OnInit {
   error: string | null = null;
   info: string | null = null;
   profile: any = null;
+  permissions: string[] = [];
+  recent_activity: Array<any> = [];
+
+  // Grow inventory file info
+  readonly growInventoryFile = 'Detalle Inv Produtos GROW 2025.xlsx';
+  growInventoryUrl = '/assets/' + encodeURIComponent(this.growInventoryFile);
 
   qrCodeText: string | null = null;
   qrDataUrl: string | null = null;
@@ -56,9 +60,18 @@ export class ProfilePageComponent implements OnInit {
 
   selectedPhoto: File | null = null;
 
+  showEdit = false;
+  // slide-over panel state for Option C
+  slideOpen = false;
+
   readonly updateForm = this.#fb.nonNullable.group({
     name: ['', [Validators.required]],
     email: ['', [Validators.required, Validators.email]]
+  });
+  
+  // additional small reactive group for phone to keep primary form minimal
+  readonly updateFormPhone = this.#fb.nonNullable.group({
+    phone: ['']
   });
 
   readonly passwordForm = this.#fb.nonNullable.group({
@@ -71,6 +84,20 @@ export class ProfilePageComponent implements OnInit {
     void this.refresh();
   }
 
+  get hasGrowAccess(): boolean {
+    const userRole = (this.profile?.user?.role ?? '') as string;
+    const isAdmin = userRole === 'admin' || userRole === 'superadmin';
+    if (isAdmin) return true;
+
+    const staff = this.profile?.staff_member as any;
+    if (!staff) return false;
+
+    // heuristics: check title/department/area for 'grow'
+    const fields = [staff.title, staff.department, staff.area, staff.team].filter(Boolean).map((s: any) => String(s));
+    const combined = fields.join(' ').toLowerCase();
+    return combined.includes('grow');
+  }
+
   async refresh(): Promise<void> {
     if (this.isLoading) return;
     this.isLoading = true;
@@ -79,10 +106,17 @@ export class ProfilePageComponent implements OnInit {
 
     try {
       this.profile = await firstValueFrom(this.#profile.get());
+      // normalize permissions and recent activity if provided by backend
+      this.permissions = (this.profile?.user?.permissions ?? this.profile?.permissions ?? []) as string[];
+      this.recent_activity = (this.profile?.recent_activity ?? []) as any[];
       const user = this.profile?.user as any;
       const name = typeof user?.name === 'string' ? user.name : '';
       const email = typeof user?.email === 'string' ? user.email : '';
+      const phone = typeof this.profile?.staff_member?.phone === 'string'
+        ? this.profile.staff_member.phone
+        : (typeof user?.phone === 'string' ? user.phone : '');
       this.updateForm.reset({ name, email });
+      this.updateFormPhone.reset({ phone });
 
       await this.refreshQr();
     } catch (err: any) {
@@ -148,19 +182,31 @@ export class ProfilePageComponent implements OnInit {
     this.isSaving = true;
     try {
       const raw = this.updateForm.getRawValue();
-      await firstValueFrom(
-        this.#profile.update({
-          name: raw.name.trim(),
-          email: raw.email.trim()
-        })
-      );
+      const phoneRaw = this.updateFormPhone.getRawValue();
+      const payload: any = {
+        name: raw.name.trim(),
+        email: raw.email.trim()
+      };
+      if (phoneRaw?.phone) payload.phone = phoneRaw.phone.trim();
+      await firstValueFrom(this.#profile.update(payload));
       this.info = 'Perfil actualizado.';
       await this.refresh();
+      // close slide-over if open
+      this.slideOpen = false;
+      this.showEdit = false;
     } catch (err: any) {
       this.error = this.#formatError(err);
     } finally {
       this.isSaving = false;
     }
+  }
+
+  openSlide(): void {
+    this.slideOpen = true;
+  }
+
+  closeSlide(): void {
+    this.slideOpen = false;
   }
 
   async changePassword(): Promise<void> {
@@ -213,6 +259,21 @@ export class ProfilePageComponent implements OnInit {
     } finally {
       this.isSaving = false;
     }
+  }
+
+  cancelEdit(): void {
+    const user = this.profile?.user as any;
+    const name = typeof user?.name === 'string' ? user.name : '';
+    const email = typeof user?.email === 'string' ? user.email : '';
+    const phone = typeof this.profile?.staff_member?.phone === 'string'
+      ? this.profile.staff_member.phone
+      : (typeof user?.phone === 'string' ? user.phone : '');
+    this.updateForm.reset({ name, email });
+    this.updateFormPhone.reset({ phone });
+    this.showEdit = false;
+    this.selectedPhoto = null;
+    this.error = null;
+    this.info = null;
   }
 
   #formatError(err: any): string {

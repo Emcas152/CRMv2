@@ -3,13 +3,13 @@
     <c-card class="mb-4">
       <c-card-header class="d-flex justify-content-between align-items-center">
         <div>
-          <strong>Citas</strong>
-          <small class="text-body-secondary ms-2">Total: {{ total }}</small>
+          <strong>Gestión de Citas</strong>
+          <small class="text-body-secondary ms-2" *ngIf="!isPatient">Total: {{ total }}</small>
         </div>
         <div class="d-flex gap-2">
           <ng-container *ngIf="!isPatient">
             <button cButton color="secondary" type="button" (click)="startCreate()" [disabled]="isSaving || isLoading">
-              Nuevo
+              Nueva Cita
             </button>
           </ng-container>
           <button cButton color="primary" type="button" (click)="refresh()" [disabled]="isLoading">
@@ -18,167 +18,313 @@
         </div>
       </c-card-header>
       <c-card-body>
-        <c-alert *ngIf="error" color="danger" class="mb-3">{{ error }}</c-alert>
-
+        <c-alert *ngIf="error && !isPatient" color="danger" class="mb-3">{{ error }}</c-alert>
         <c-alert *ngIf="submitError" color="danger" class="mb-3">{{ submitError }}</c-alert>
-
         <c-alert *ngIf="actionError" color="danger" class="mb-3">{{ actionError }}</c-alert>
 
-        <form cForm class="mb-4" [formGroup]="filterForm" (ngSubmit)="refresh()">
-          <div class="mb-2"><strong>Filtros</strong></div>
-          <c-row class="g-3">
-            <ng-container *ngIf="!isPatient">
-              <c-col md="2">
-                <label cLabel for="f_patient_id">Patient</label>
-                <select id="f_patient_id" cSelect formControlName="patient_id">
-                  <option value="0">(cualquiera)</option>
-                  <option *ngFor="let p of patients; trackBy: trackByPatient" [value]="p.id">{{ p.name }}</option>
-                </select>
-              </c-col>
-            </ng-container>
-            <ng-container *ngIf="isPatient">
-              <c-col md="2">
-                <label cLabel>Paciente</label>
-                <div class="small text-body-secondary">{{ me?.name }}</div>
-              </c-col>
-            </ng-container>
-            <c-col md="3">
-              <label cLabel for="f_date_from">Desde</label>
-              <input id="f_date_from" cFormControl type="date" formControlName="date_from" />
-            </c-col>
-            <c-col md="3">
-              <label cLabel for="f_date_to">Hasta</label>
-              <input id="f_date_to" cFormControl type="date" formControlName="date_to" />
-            </c-col>
-            <c-col md="2">
-              <label cLabel for="f_status">Estado</label>
-              <select id="f_status" cSelect formControlName="status">
-                <option value="">(cualquiera)</option>
-                <option *ngFor="let s of statuses" [value]="s">{{ statusLabels[s] }}</option>
-              </select>
-            </c-col>
-            <c-col md="2">
-              <label cLabel for="f_per_page">Por página</label>
-              <input id="f_per_page" cFormControl type="number" min="1" max="200" formControlName="per_page" />
-            </c-col>
-            <c-col xs="12" class="d-flex gap-2">
-              <button cButton color="primary" type="submit" [disabled]="isLoading">
-                {{ isLoading ? 'Cargando…' : 'Aplicar' }}
-              </button>
-              <button cButton color="secondary" type="button" (click)="prevPage()" [disabled]="isLoading">
-                Anterior
-              </button>
-              <button cButton color="secondary" type="button" (click)="nextPage()" [disabled]="isLoading">
-                Siguiente
-              </button>
-              <div class="text-body-secondary small align-self-center">
-                Página: {{ filterForm.controls.page.value }}
+        <!-- Info for patients -->
+        <c-alert *ngIf="isPatient" color="info" class="mb-3">
+          Selecciona una fecha en el calendario para ver los horarios disponibles y solicitar una cita.
+        </c-alert>
+
+        <div class="d-flex gap-3">
+          <!-- Calendar Grid -->
+          <div class="flex-grow-1 appointments-calendar">
+            <!-- Calendar Header -->
+            <div class="calendar-header">
+              <div class="nav-buttons">
+                <button cButton color="light" size="sm" type="button" (click)="prevMonth()">
+                  &lt;
+                </button>
+                <button cButton color="light" size="sm" type="button" (click)="goToToday()">
+                  Hoy
+                </button>
+                <button cButton color="light" size="sm" type="button" (click)="nextMonth()">
+                  &gt;
+                </button>
               </div>
-            </c-col>
-          </c-row>
-        </form>
+              <div class="month-title">{{ currentMonthYear }}</div>
+              <div></div>
+            </div>
 
-        <ng-container *ngIf="!isPatient">
-          <form cForm class="mb-4" [formGroup]="form" (ngSubmit)="save()">
-          <div class="mb-2">
-            <strong>{{ editingId === null ? 'Crear cita' : 'Editar cita #' + editingId }}</strong>
+            <!-- Calendar Grid -->
+            <div class="calendar-grid">
+              <!-- Weekday Headers -->
+              <div *ngFor="let day of weekDays" class="calendar-weekday">
+                {{ day }}
+              </div>
+
+              <!-- Calendar Days -->
+              <div *ngFor="let day of calendarDays"
+                   class="calendar-day"
+                   [class.other-month]="!day.isCurrentMonth"
+                   [class.today]="day.isToday"
+                   [class.selected]="selectedDate === day.dateStr"
+                   (click)="onDayClick(day)">
+                <span class="day-number">{{ day.dayNumber }}</span>
+                <div class="day-appointments">
+                  <div *ngFor="let appt of getVisibleAppointments(day)"
+                       class="appointment-chip"
+                       [class.status-pending]="appt.status === 'pending'"
+                       [class.status-confirmed]="appt.status === 'confirmed'"
+                       [class.status-completed]="appt.status === 'completed'"
+                       [class.status-cancelled]="appt.status === 'cancelled'"
+                       [class.my-appointment]="isMyAppointment(appt)"
+                       [class.occupied-slot]="isPatient && !isMyAppointment(appt)"
+                       (click)="onAppointmentClick(appt, $event)"
+                       [title]="isPatient && !isMyAppointment(appt) ? 'Ocupado' : (appt.patient_name || appt.service)">
+                    {{ getAppointmentDisplay(appt) }}
+                  </div>
+                  <div *ngIf="getHiddenCount(day) > 0" class="more-appointments">
+                    +{{ getHiddenCount(day) }} más
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-          <c-row class="g-3">
-            <c-col md="2">
-              <label cLabel for="patient_id">Patient</label>
-              <select id="patient_id" cSelect formControlName="patient_id">
-                <option value="0">(seleccionar)</option>
-                <option *ngFor="let p of patients; trackBy: trackByPatient" [value]="p.id">{{ p.name }}</option>
-              </select>
-              <div *ngIf="form.controls.patient_id.touched && form.controls.patient_id.invalid" class="text-danger small mt-1">Requerido.</div>
-            </c-col>
-            <c-col md="2">
-              <label cLabel for="appointment_date">Fecha</label>
-              <input id="appointment_date" cFormControl type="date" formControlName="appointment_date" />
-              <div *ngIf="form.controls.appointment_date.touched && form.controls.appointment_date.invalid" class="text-danger small mt-1">Requerido.</div>
-            </c-col>
-            <c-col md="2">
-              <label cLabel for="appointment_time">Hora</label>
-              <input id="appointment_time" cFormControl type="time" formControlName="appointment_time" />
-              <div *ngIf="form.controls.appointment_time.touched && form.controls.appointment_time.invalid" class="text-danger small mt-1">Requerido.</div>
-            </c-col>
-            <c-col md="3">
-              <label cLabel for="service">Servicio</label>
-              <input id="service" cFormControl type="text" formControlName="service" />
-              <div *ngIf="form.controls.service.touched && form.controls.service.invalid" class="text-danger small mt-1">Requerido.</div>
-            </c-col>
-            <c-col md="3">
-              <label cLabel for="status">Estado</label>
-              <select id="status" cSelect formControlName="status">
-                <option *ngFor="let s of statuses" [value]="s">{{ statusLabels[s] }}</option>
-              </select>
-            </c-col>
 
-            <c-col md="2">
-              <label cLabel for="staff_member_id">Staff</label>
-              <select id="staff_member_id" cSelect formControlName="staff_member_id">
-                <option value="0">(ninguno)</option>
-                <option *ngFor="let s of staffMembers" [value]="s.id">{{ s.name }}</option>
-              </select>
-            </c-col>
-            <c-col md="10">
-              <label cLabel for="notes">Notas</label>
-              <input id="notes" cFormControl type="text" formControlName="notes" />
-            </c-col>
+          <!-- Time Slots Panel -->
+          <div style="width: 340px;">
+            <div class="card p-3">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <strong>{{ selectedDate || 'Selecciona una fecha' }}</strong>
+                <span *ngIf="selectedDay?.appointments?.length" class="badge bg-primary">
+                  {{ selectedDay?.appointments?.length }} cita(s)
+                </span>
+              </div>
 
-            <c-col xs="12" class="d-flex gap-2">
-              <button cButton color="success" type="submit" [disabled]="isSaving">
-                {{ isSaving ? 'Guardando…' : (editingId === null ? 'Crear' : 'Guardar') }}
-              </button>
-              <button *ngIf="editingId !== null" cButton color="secondary" type="button" (click)="cancelEdit()" [disabled]="isSaving">
-                Cancelar
-              </button>
-            </c-col>
-          </c-row>
-          </form>
-        </ng-container>
+              <div *ngIf="selectedDate" class="time-slots-panel">
+                <div *ngIf="!canViewOccupiedForDate" class="mb-2 text-warning small">
+                  No podemos verificar todos los horarios. La disponibilidad se validará al enviar.
+                </div>
 
-        <table cTable [striped]="true">
-          <thead>
-            <tr>
-              <th scope="col">ID</th>
-              <th scope="col">Paciente</th>
-              <th scope="col">Fecha</th>
-              <th scope="col">Hora</th>
-              <th scope="col">Servicio</th>
-              <th scope="col">Estado</th>
-              <th scope="col">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let a of items; trackBy: trackByAppointment">
-              <td>{{ a.id }}</td>
-              <td>{{ a.patient_name || a.patient_id }}</td>
-              <td>{{ a.appointment_date }}</td>
-              <td>{{ a.appointment_time }}</td>
-              <td>{{ a.service }}</td>
-              <td>{{ a.status ? statusLabels[a.status] : '' }}</td>
-              <td class="d-flex flex-wrap gap-2">
-                <ng-container *ngIf="!isPatient">
-                  <button cButton color="secondary" size="sm" type="button" (click)="startEdit(a)" [disabled]="actingId === a.id">Editar</button>
-                  <button cButton color="danger" size="sm" type="button" (click)="delete(a)" [disabled]="actingId === a.id">Eliminar</button>
-                  <button cButton color="info" size="sm" type="button" (click)="sendEmail(a)" [disabled]="actingId === a.id">Email</button>
-                  <button cButton color="info" size="sm" type="button" (click)="sendWhatsapp(a)" [disabled]="actingId === a.id">WhatsApp</button>
-                  <button cButton color="warning" size="sm" type="button" (click)="generateReminder(a)" [disabled]="actingId === a.id">Recordatorio</button>
-                  <button cButton color="success" size="sm" type="button" (click)="updateStatus(a, 'confirmed')" [disabled]="actingId === a.id">Confirmar</button>
-                  <button cButton color="success" size="sm" type="button" (click)="updateStatus(a, 'completed')" [disabled]="actingId === a.id">Completar</button>
-                  <button cButton color="secondary" size="sm" type="button" (click)="updateStatus(a, 'cancelled')" [disabled]="actingId === a.id">Cancelar</button>
+                <div class="mb-2 small text-body-secondary">Horarios disponibles:</div>
 
-                  <span *ngIf="getRowStatus(a)" class="small text-body-secondary align-self-center">{{ getRowStatus(a) }}</span>
-                </ng-container>
-              </td>
-            </tr>
-            <tr *ngIf="!items || items.length === 0">
-              <td colspan="7" class="text-center text-body-secondary">Sin datos</td>
-            </tr>
-          </tbody>
-        </table>
+                <div *ngFor="let slot of daySlots">
+                  <button type="button"
+                          class="slot-button"
+                          [class.available]="slot.available"
+                          [class.occupied]="!slot.available"
+                          [disabled]="!slot.available && isPatient"
+                          (click)="slot.available && isPatient ? requestSlot(selectedDate!, slot.time) : (!slot.available && !isPatient && slot.appointment ? onAppointmentClick(slot.appointment, $event) : null)">
+                    <div class="d-flex justify-content-between align-items-center">
+                      <span class="slot-time">{{ slot.time }}</span>
+                      <span *ngIf="slot.available" class="badge bg-success">Disponible</span>
+                      <span *ngIf="!slot.available" class="badge bg-secondary">Ocupado</span>
+                    </div>
+                    <div *ngIf="!slot.available && slot.appointment" class="slot-info">
+                      <span *ngIf="!isPatient" class="slot-patient">
+                        {{ slot.appointment.patient_name || 'Paciente #' + slot.appointment.patient_id }}
+                      </span>
+                      <span *ngIf="isPatient && slot.appointment.patient_id === patientIdForFilter" class="slot-patient">
+                        Tu cita - {{ slot.appointment.service }}
+                      </span>
+                    </div>
+                    <div *ngIf="slot.available && isPatient" class="slot-info">
+                      Click para reservar
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              <div *ngIf="!selectedDate" class="text-body-secondary small text-center py-4">
+                Haz clic en una fecha del calendario para ver los horarios disponibles.
+              </div>
+            </div>
+
+            <!-- Form for Staff to create/edit appointments -->
+            <div *ngIf="!isPatient && (editingId !== null || form.controls.patient_id.value)" class="card p-3 mt-3">
+              <div class="mb-2">
+                <strong>{{ editingId ? 'Editar Cita #' + editingId : 'Nueva Cita' }}</strong>
+              </div>
+              <form [formGroup]="form" (ngSubmit)="save()">
+                <div class="mb-2">
+                  <label class="form-label small">Paciente</label>
+                  <select class="form-select form-select-sm" formControlName="patient_id">
+                    <option [value]="0">-- Seleccionar --</option>
+                    <option *ngFor="let p of patients; trackBy: trackByPatient" [value]="p.id">
+                      {{ p.name }}
+                    </option>
+                  </select>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small">Fecha</label>
+                  <input type="date" class="form-control form-control-sm" formControlName="appointment_date" />
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small">Hora</label>
+                  <input type="time" class="form-control form-control-sm" formControlName="appointment_time" />
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small">Servicio</label>
+                  <input type="text" class="form-control form-control-sm" formControlName="service" />
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small">Estado</label>
+                  <select class="form-select form-select-sm" formControlName="status">
+                    <option *ngFor="let s of statuses" [value]="s">{{ statusLabels[s] }}</option>
+                  </select>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label small">Notas</label>
+                  <textarea class="form-control form-control-sm" rows="2" formControlName="notes"></textarea>
+                </div>
+                <div class="d-flex gap-2 justify-content-end">
+                  <button cButton color="secondary" size="sm" type="button" (click)="cancelEdit()">Cancelar</button>
+                  <button cButton color="primary" size="sm" type="submit" [disabled]="isSaving || form.invalid">
+                    {{ isSaving ? 'Guardando…' : (editingId ? 'Actualizar' : 'Crear') }}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <!-- Appointments Table for Staff -->
+        <div *ngIf="!isPatient && items.length > 0" class="mt-4">
+          <h6>Listado de Citas</h6>
+          <div class="table-responsive">
+            <table class="table table-sm table-hover">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Paciente</th>
+                  <th>Fecha</th>
+                  <th>Hora</th>
+                  <th>Servicio</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let a of items; trackBy: trackByAppointment">
+                  <td>{{ a.id }}</td>
+                  <td>{{ a.patient_name || 'Paciente #' + a.patient_id }}</td>
+                  <td>{{ a.appointment_date }}</td>
+                  <td>{{ a.appointment_time }}</td>
+                  <td>{{ a.service }}</td>
+                  <td>
+                    <span class="badge"
+                          [class.bg-warning]="a.status === 'pending'"
+                          [class.bg-primary]="a.status === 'confirmed'"
+                          [class.bg-success]="a.status === 'completed'"
+                          [class.bg-secondary]="a.status === 'cancelled'">
+                      {{ a.status ? statusLabels[a.status] : a.status }}
+                    </span>
+                  </td>
+                  <td>
+                    <div class="btn-group btn-group-sm">
+                      <button cButton color="info" size="sm" type="button" (click)="startEdit(a)" title="Editar">
+                        ✏️
+                      </button>
+                      <button cButton color="success" size="sm" type="button" (click)="updateStatus(a, 'confirmed')" [disabled]="actingId !== null || a.status === 'confirmed'" title="Confirmar">
+                        ✓
+                      </button>
+                      <button cButton color="warning" size="sm" type="button" (click)="generateReminder(a)" [disabled]="actingId !== null" title="Generar recordatorio">
+                        🔔
+                      </button>
+                      <button cButton color="danger" size="sm" type="button" (click)="delete(a)" title="Eliminar">
+                        🗑️
+                      </button>
+                    </div>
+                    <small *ngIf="getRowStatus(a)" class="d-block text-muted mt-1">{{ getRowStatus(a) }}</small>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination -->
+          <div class="d-flex justify-content-between align-items-center mt-2">
+            <small class="text-body-secondary">Página {{ filterForm.controls.page.value }} de {{ (total / (filterForm.controls.per_page.value || 20)) | number:'1.0-0' }}</small>
+            <div class="btn-group btn-group-sm">
+              <button cButton color="light" size="sm" type="button" (click)="prevPage()" [disabled]="isLoading || filterForm.controls.page.value <= 1">Anterior</button>
+              <button cButton color="light" size="sm" type="button" (click)="nextPage()" [disabled]="isLoading">Siguiente</button>
+            </div>
+          </div>
+        </div>
       </c-card-body>
     </c-card>
   </c-col>
 </c-row>
+
+<!-- Request Modal for Patients -->
+<div *ngIf="showRequestModal" class="modal-backdrop-custom">
+  <div class="modal-content-custom card p-4" style="width: 480px;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <strong>Solicitar Cita</strong>
+      <button cButton color="light" size="sm" type="button" (click)="cancelRequest()">✕</button>
+    </div>
+    <div class="mb-3">
+      <div class="d-flex gap-4">
+        <div>
+          <small class="text-body-secondary">Fecha</small>
+          <div class="fw-bold">{{ requestDraft.date }}</div>
+        </div>
+        <div>
+          <small class="text-body-secondary">Hora</small>
+          <div class="fw-bold">{{ requestDraft.time }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="mb-3">
+      <label class="form-label small">Motivo de la cita (opcional)</label>
+      <textarea class="form-control" rows="3" [(ngModel)]="requestDraft.notes" placeholder="Describe brevemente el motivo de tu consulta..."></textarea>
+    </div>
+    <div class="d-flex gap-2 justify-content-end">
+      <button cButton color="secondary" type="button" (click)="cancelRequest()">Cancelar</button>
+      <button cButton color="success" type="button" (click)="confirmRequest()" [disabled]="isSaving">
+        {{ isSaving ? 'Enviando…' : 'Confirmar Solicitud' }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Reminder Modal for Staff -->
+<div *ngIf="showReminderModal" class="modal-backdrop-custom">
+  <div class="modal-content-custom card p-4" style="width: 600px;">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <strong>Recordatorio de Cita</strong>
+      <button cButton color="light" size="sm" type="button" (click)="showReminderModal = false; reminderAppointment = null">✕</button>
+    </div>
+    <div class="mb-3 p-2 bg-light rounded">
+      <div class="small text-body-secondary">Paciente</div>
+      <div class="fw-bold">{{ reminderAppointment?.patient_name || 'Paciente #' + reminderAppointment?.patient_id }}</div>
+      <div class="d-flex gap-4 mt-2">
+        <div>
+          <small class="text-body-secondary">Fecha</small>
+          <div>{{ reminderAppointment?.appointment_date }}</div>
+        </div>
+        <div>
+          <small class="text-body-secondary">Hora</small>
+          <div>{{ reminderAppointment?.appointment_time }}</div>
+        </div>
+        <div>
+          <small class="text-body-secondary">Servicio</small>
+          <div>{{ reminderAppointment?.service }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="mb-3">
+      <label class="form-label small">Texto del recordatorio</label>
+      <textarea class="form-control" rows="6" [(ngModel)]="reminderDraft" placeholder="Escribe o genera un recordatorio con IA..."></textarea>
+    </div>
+    <div class="d-flex justify-content-between">
+      <div class="d-flex gap-2">
+        <button cButton color="light" size="sm" type="button" (click)="copyReminderToClipboard()">📋 Copiar</button>
+        <button cButton color="warning" size="sm" type="button" (click)="reminderAppointment && generateReminder(reminderAppointment)" [disabled]="actingId !== null">
+          🤖 Generar con IA
+        </button>
+      </div>
+      <div class="d-flex gap-2">
+        <button cButton color="secondary" type="button" (click)="showReminderModal = false">Cerrar</button>
+        <button cButton color="success" type="button" (click)="saveReminderAndSendWhatsapp()" [disabled]="isSavingReminder">
+          📱 WhatsApp
+        </button>
+        <button cButton color="info" type="button" (click)="saveReminderAndSendEmail()" [disabled]="isSavingReminder">
+          ✉️ Email
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

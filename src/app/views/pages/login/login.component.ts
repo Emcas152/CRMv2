@@ -1,6 +1,6 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, OnInit } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { Router, RouterLink, ActivatedRoute } from '@angular/router';
 import { IconDirective } from '@coreui/icons-angular';
 import {
   AlertComponent,
@@ -42,18 +42,27 @@ import { firstValueFrom } from 'rxjs';
     AlertComponent
   ]
 })
-export class LoginComponent {
+export class LoginComponent implements OnInit {
   readonly #fb = inject(FormBuilder);
   readonly #auth = inject(AuthService);
   readonly #router = inject(Router);
+  readonly #route = inject(ActivatedRoute);
 
   isSubmitting = false;
   submitError: string | null = null;
+  sessionExpired = false;
 
   readonly form = this.#fb.nonNullable.group({
     email: ['', [Validators.required, Validators.email]],
     password: ['', [Validators.required]]
   });
+
+  ngOnInit(): void {
+    // Check if redirected due to session expiration
+    this.#route.queryParams.subscribe(params => {
+      this.sessionExpired = params['sessionExpired'] === 'true';
+    });
+  }
 
   async onSubmit(): Promise<void> {
     this.submitError = null;

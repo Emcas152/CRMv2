@@ -24,7 +24,7 @@ export const navItems: NavItemWithRoles[] = [
     name: 'Citas',
     url: '/crm/appointments',
     iconComponent: { name: 'cil-calendar' },
-    roles: ['superadmin', 'admin', 'doctor', 'staff']
+    roles: ['superadmin', 'admin', 'doctor', 'staff', 'patient']
   },
   {
     name: 'Ventas',

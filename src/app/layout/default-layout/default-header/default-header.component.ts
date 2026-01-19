@@ -70,6 +70,7 @@ export class DefaultHeaderComponent extends HeaderComponent {
   canSeePatients = false;
   canSeeAppointments = false;
   canSeeSales = false;
+  currentUser: any = null;
 
   async onLogout(): Promise<void> {
     try {
@@ -92,6 +93,7 @@ export class DefaultHeaderComponent extends HeaderComponent {
   async loadPermissions(): Promise<void> {
     try {
       const me = await firstValueFrom(this.#auth.me());
+      this.currentUser = me?.user ?? null;
       const role = me?.user?.role;
       const isSuperadmin = role === 'superadmin';
       const isAdmin = role === 'admin' || isSuperadmin;
@@ -100,12 +102,11 @@ export class DefaultHeaderComponent extends HeaderComponent {
       const isPatient = role === 'patient';
 
       this.canSeePatients = isAdmin || isDoctor || isStaff;
-      this.canSeeAppointments = isAdmin || isDoctor || isStaff;
+      this.canSeeAppointments = isAdmin || isDoctor || isStaff || isPatient;
       this.canSeeSales = isAdmin || isDoctor || isStaff;
 
       if (isPatient) {
         this.canSeePatients = false;
-        this.canSeeAppointments = false;
         this.canSeeSales = false;
       }
       this.canSeeUpdates = isAdmin;

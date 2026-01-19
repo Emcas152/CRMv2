@@ -18,6 +18,12 @@
                 <h1>Iniciar sesión</h1>
                 <p class="text-body-secondary">Accede a tu cuenta</p>
 
+                @if (sessionExpired) {
+                  <c-alert color="warning" class="mb-3">
+                    Tu sesión ha expirado. Por favor, inicia sesión nuevamente.
+                  </c-alert>
+                }
+
                 @if (submitError) {
                   <c-alert color="danger" class="mb-3">{{ submitError }}</c-alert>
                 }

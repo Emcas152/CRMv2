@@ -10,91 +10,135 @@
         </button>
       </c-card-header>
       <c-card-body>
-        @if (error) {
-          <c-alert color="danger" class="mb-3">{{ error }}</c-alert>
-        }
+        <c-row>
+          <c-col xs="12">
+            <div class="profile-header text-center py-4">
+              <div class="avatar mb-3 d-inline-block position-relative" style="width:120px;height:120px;">
+                <img [src]="profile?.user?.avatar_url || profile?.user?.photo || 'assets/img/default-avatar.svg'" alt="Avatar" class="rounded-circle" style="width:120px;height:120px;object-fit:cover;border:4px solid var(--cui-bg);" />
+                <div *ngIf="showEdit" class="position-absolute" style="right:0;bottom:0;">
+                  <label class="btn btn-sm btn-outline-secondary mb-0">
+                    Cambiar
+                    <input type="file" (change)="onPhotoChange($event)" accept="image/*" hidden />
+                  </label>
+                </div>
+              </div>
 
-        @if (info) {
-          <c-alert color="success" class="mb-3">{{ info }}</c-alert>
-        }
+              <ng-container *ngIf="!showEdit; else editHeader">
+                <h2 class="mb-1">{{ profile?.user?.name || 'Nombre' }}</h2>
+                <div class="small text-body-secondary mb-2">{{ profile?.staff_member?.title || profile?.user?.role || '' }}</div>
+                <div class="mb-2">
+                  <span *ngIf="profile?.user?.is_super_admin" class="badge bg-warning text-dark">Super Admin</span>
+                </div>
+                <div>
+                  <button cButton color="primary" type="button" (click)="openSlide()">Editar Perfil</button>
+                </div>
+              </ng-container>
 
-        <form cForm class="mb-4" [formGroup]="updateForm" (ngSubmit)="saveProfile()">
-          <div class="mb-2"><strong>Actualizar perfil</strong></div>
-          <c-row class="g-3">
-            <c-col md="4">
-              <label cLabel for="name">Nombre</label>
-              <input id="name" cFormControl type="text" formControlName="name" />
-              @if (updateForm.controls.name.touched && updateForm.controls.name.invalid) {
-                <div class="text-danger small mt-1">Nombre requerido.</div>
-              }
-            </c-col>
-            <c-col md="4">
-              <label cLabel for="email">Email</label>
-              <input id="email" cFormControl type="email" formControlName="email" />
-              @if (updateForm.controls.email.touched && updateForm.controls.email.invalid) {
-                <div class="text-danger small mt-1">Email válido requerido.</div>
-              }
-            </c-col>
-            <c-col md="4" class="d-flex align-items-end">
-              <button cButton color="success" type="submit" [disabled]="isSaving">
-                {{ isSaving ? 'Guardando…' : 'Guardar' }}
-              </button>
-            </c-col>
-          </c-row>
-        </form>
-
-        <form cForm class="mb-4" [formGroup]="passwordForm" (ngSubmit)="changePassword()">
-          <div class="mb-2"><strong>Cambiar contraseña</strong></div>
-          <c-row class="g-3">
-            <c-col md="4">
-              <label cLabel for="current_password">Contraseña actual</label>
-              <input id="current_password" cFormControl type="password" formControlName="current_password" />
-            </c-col>
-            <c-col md="4">
-              <label cLabel for="new_password">Nueva contraseña</label>
-              <input id="new_password" cFormControl type="password" formControlName="new_password" />
-            </c-col>
-            <c-col md="4">
-              <label cLabel for="confirm_password">Confirmar contraseña</label>
-              <input id="confirm_password" cFormControl type="password" formControlName="confirm_password" />
-            </c-col>
-            <c-col xs="12">
-              <button cButton color="warning" type="submit" [disabled]="isSaving">
-                {{ isSaving ? 'Actualizando…' : 'Cambiar contraseña' }}
-              </button>
-            </c-col>
-          </c-row>
-        </form>
-
-        <div class="mb-3">
-          <div class="mb-2"><strong>Subir foto</strong></div>
-          <div class="d-flex gap-2 align-items-center">
-            <input class="form-control" type="file" accept="image/*" (change)="onPhotoChange($event)" [disabled]="isSaving" />
-            <button cButton color="primary" type="button" (click)="uploadPhoto()" [disabled]="isSaving">
-              {{ isSaving ? 'Subiendo…' : 'Subir' }}
-            </button>
-          </div>
-        </div>
-
-        <div class="mb-4">
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <strong>{{ qrTitle }}</strong>
-            <button cButton color="secondary" type="button" (click)="refreshQr()" [disabled]="isLoadingQr">
-              {{ isLoadingQr ? 'Cargando…' : 'Refrescar QR' }}
-            </button>
-          </div>
-
-          @if (qrDataUrl) {
-            <div class="bg-white p-2 border d-inline-block">
-              <img [src]="qrDataUrl" alt="Código QR" class="img-fluid" style="max-width: 420px; width: 100%; height: auto;" />
+              <ng-template #editHeader>
+                <form [formGroup]="updateForm" class="d-inline-block w-100">
+                  <input formControlName="name" class="form-control form-control-lg mb-2 text-center" />
+                  <input formControlName="email" class="form-control mb-2 text-center" />
+                  <div class="d-flex justify-content-center mb-2">
+                    <button cButton color="success" type="button" (click)="saveProfile()" [disabled]="isSaving">Guardar</button>
+                    <button cButton color="secondary" type="button" class="ms-2" (click)="cancelEdit()">Cancelar</button>
+                    <button *ngIf="selectedPhoto" cButton color="info" type="button" class="ms-2" (click)="uploadPhoto()">Subir Foto</button>
+                  </div>
+                </form>
+              </ng-template>
             </div>
-            <div class="small text-body-secondary mt-2">Código: {{ qrCodeText }}</div>
-          } @else {
-            <div class="text-body-secondary small">
-              {{ isLoadingQr ? 'Generando QR…' : 'No hay QR disponible.' }}
+
+            <!-- Slide-over panel (Option C) -->
+            <div *ngIf="slideOpen" class="slide-over-backdrop" (click)="closeSlide()">
+              <div class="slide-over" (click)="$event.stopPropagation()">
+                <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
+                  <h5 class="mb-0">Editar Perfil</h5>
+                  <button class="btn btn-sm btn-light" (click)="closeSlide()">✕</button>
+                </div>
+                <div class="p-3">
+                  <form [formGroup]="updateForm">
+                    <div class="mb-3">
+                      <label class="form-label">Nombre</label>
+                      <input formControlName="name" class="form-control" />
+                    </div>
+                    <div class="mb-3">
+                      <label class="form-label">Email</label>
+                      <input formControlName="email" class="form-control" />
+                    </div>
+                    <div class="mb-3">
+                      <label class="form-label">Teléfono</label>
+                      <input formControlName="phone" [formControl]="updateFormPhone.controls.phone" class="form-control" />
+                    </div>
+                    <div class="mb-3">
+                      <label class="form-label">Foto</label>
+                      <input type="file" (change)="onPhotoChange($event)" accept="image/*" class="form-control" />
+                    </div>
+                    <div class="d-flex gap-2">
+                      <button cButton color="success" type="button" (click)="saveProfile()" [disabled]="isSaving">Guardar</button>
+                      <button cButton color="secondary" type="button" (click)="closeSlide()">Cancelar</button>
+                      <button *ngIf="selectedPhoto" cButton color="info" type="button" (click)="uploadPhoto()">Subir Foto</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
             </div>
-          }
-        </div>
+          </c-col>
+        </c-row>
+
+        <c-row class="g-3">
+          <c-col md="6">
+            <c-card class="mb-3">
+              <c-card-body>
+                <h5>Información de Contacto</h5>
+                <div class="mt-3 small text-muted">
+                  <div><strong>Email:</strong> {{ profile?.user?.email || '-' }}</div>
+                  <div><strong>Teléfono:</strong> {{ profile?.staff_member?.phone || profile?.user?.phone || '-' }}</div>
+                  <div><strong>Miembro Desde:</strong> {{ profile?.user?.created_at ? (profile?.user?.created_at | date:'d MMMM yyyy') : '-' }}</div>
+                </div>
+              </c-card-body>
+            </c-card>
+            
+            <c-card *ngIf="hasGrowAccess" class="mb-3">
+              <c-card-body>
+                <h5>Inventario Grow</h5>
+                <div class="mt-2 small">
+                  <p class="mb-2">Archivo: <strong>{{ growInventoryFile }}</strong></p>
+                  <a [href]="growInventoryUrl" target="_blank" rel="noreferrer" class="btn btn-sm btn-outline-primary">Descargar Inventario</a>
+                </div>
+              </c-card-body>
+            </c-card>
+          </c-col>
+          <c-col md="6">
+            <c-card class="mb-3">
+              <c-card-body>
+                <h5>Permisos</h5>
+                <div class="mt-3">
+                  <ng-container *ngFor="let p of permissions">
+                    <span class="badge bg-secondary me-1">{{ p }}</span>
+                  </ng-container>
+                </div>
+              </c-card-body>
+            </c-card>
+          </c-col>
+        </c-row>
+
+        <c-row>
+          <c-col xs="12">
+            <c-card>
+              <c-card-body>
+                <h5>Actividad Reciente</h5>
+                <div class="mt-3">
+                  <ul class="list-unstyled">
+                    <li *ngFor="let a of recent_activity" class="py-2 border-bottom d-flex justify-content-between">
+                      <div>{{ a.text }}</div>
+                      <div class="text-body-secondary small">{{ a.time_ago }}</div>
+                    </li>
+                    <li *ngIf="!recent_activity || recent_activity.length === 0" class="text-body-secondary py-2">Sin actividad reciente</li>
+                  </ul>
+                </div>
+              </c-card-body>
+            </c-card>
+          </c-col>
+        </c-row>
 
       </c-card-body>
     </c-card>

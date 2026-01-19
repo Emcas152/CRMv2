@@ -19,3 +19,254 @@
 .app-loading-overlay {
   z-index: 3000;
 }
+
+// Highlight recently created appointment in FullCalendar
+.fc-event.recent-created, .fc-event.recent-created .fc-event-main {
+  background-color: var(--cui-success) !important;
+  border-color: var(--cui-success) !important;
+  color: #fff !important;
+}
+
+// Custom Calendar Grid for Appointments (similar to image reference)
+.appointments-calendar {
+  width: 100%;
+
+  .calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+
+    .month-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+
+    .nav-buttons {
+      display: flex;
+      gap: 0.5rem;
+    }
+  }
+
+  .calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    border: 1px solid var(--cui-border-color);
+    border-radius: 0.375rem;
+    overflow: hidden;
+  }
+
+  .calendar-weekday {
+    background: var(--cui-tertiary-bg);
+    padding: 0.5rem;
+    text-align: center;
+    font-weight: 600;
+    font-size: 0.875rem;
+    border-bottom: 1px solid var(--cui-border-color);
+    color: var(--cui-body-color);
+  }
+
+  .calendar-day {
+    min-height: 120px;
+    border: 1px solid var(--cui-border-color);
+    padding: 0.25rem;
+    background: var(--cui-body-bg);
+    position: relative;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+
+    &:hover {
+      background: var(--cui-tertiary-bg);
+    }
+
+    &.other-month {
+      background: var(--cui-secondary-bg);
+      opacity: 0.5;
+    }
+
+    &.today {
+      background: rgba(var(--cui-info-rgb), 0.1);
+      border-color: var(--cui-info);
+    }
+
+    &.selected {
+      background: rgba(var(--cui-primary-rgb), 0.1);
+      border-color: var(--cui-primary);
+    }
+
+    .day-number {
+      position: absolute;
+      top: 0.25rem;
+      right: 0.5rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--cui-secondary-color);
+    }
+
+    .day-appointments {
+      margin-top: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+  }
+
+  .appointment-chip {
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: var(--cui-primary);
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+
+    &:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+    }
+
+    &.status-pending {
+      background: var(--cui-warning);
+      color: #000;
+    }
+
+    &.status-confirmed {
+      background: var(--cui-primary);
+    }
+
+    &.status-completed {
+      background: var(--cui-success);
+    }
+
+    &.status-cancelled {
+      background: var(--cui-secondary);
+      text-decoration: line-through;
+    }
+
+    &.my-appointment {
+      border: 2px solid var(--cui-info);
+    }
+
+    &.occupied-slot {
+      background: var(--cui-secondary);
+      color: var(--cui-secondary-color);
+    }
+  }
+
+  .more-appointments {
+    font-size: 0.65rem;
+    color: var(--cui-secondary-color);
+    text-align: center;
+    cursor: pointer;
+    padding: 2px;
+
+    &:hover {
+      color: var(--cui-primary);
+    }
+  }
+}
+
+// Time slots panel
+.time-slots-panel {
+  .slot-button {
+    width: 100%;
+    margin-bottom: 0.25rem;
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.25rem;
+    border: 1px solid var(--cui-border-color);
+    background: var(--cui-body-bg);
+    transition: all 0.15s ease;
+
+    &:hover:not(:disabled) {
+      background: var(--cui-tertiary-bg);
+      border-color: var(--cui-primary);
+    }
+
+    &.available {
+      border-left: 3px solid var(--cui-success);
+    }
+
+    &.occupied {
+      border-left: 3px solid var(--cui-danger);
+      background: var(--cui-secondary-bg);
+    }
+
+    .slot-time {
+      font-weight: 600;
+      font-size: 0.875rem;
+    }
+
+    .slot-info {
+      font-size: 0.75rem;
+      color: var(--cui-secondary-color);
+    }
+
+    .slot-patient {
+      font-size: 0.75rem;
+      color: var(--cui-primary);
+    }
+  }
+}
+
+// Modal backdrop styling
+.modal-backdrop-custom {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.modal-content-custom {
+  background: var(--cui-body-bg);
+  border-radius: 0.5rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+/* Profile header tweaks to better match the reference screenshot */
+.profile-header {
+  .avatar img {
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+  }
+  h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+  }
+  .small {
+    color: var(--cui-secondary-color);
+    font-weight: 500;
+  }
+  .btn {
+    min-width: 110px;
+  }
+}
+
+/* Slide-over styles for Option C */
+.slide-over-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  justify-content: flex-end;
+  z-index: 3050;
+}
+.slide-over {
+  background: var(--cui-body-bg);
+  width: 420px;
+  max-width: 100%;
+  height: 100%;
+  box-shadow: -20px 0 40px rgba(2,6,23,0.18);
+  display: flex;
+  flex-direction: column;
+}
+.slide-over .form-label { font-weight: 600; }
+.slide-over .p-3 { overflow-y: auto; }

@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
-import { map, tap } from 'rxjs/operators';
-import { Observable } from 'rxjs';
+import { map, tap, shareReplay, catchError } from 'rxjs/operators';
+import { Observable, of } from 'rxjs';
 
 import { ApiClientService } from '../api/api-client.service';
 import { ApiEnvelope, unwrapApiEnvelope } from '../api/api.types';
@@ -38,6 +38,9 @@ export class AuthService {
   readonly #api = inject(ApiClientService);
   readonly #tokenStorage = inject(TokenStorageService);
 
+  // cached observable for /auth/me
+  private _me$?: Observable<MeResponse> | null = null;
+
   login(email: string, password: string): Observable<LoginResponse> {
     const deviceName = (typeof navigator !== 'undefined' && (navigator as any).userAgent)
       ? (navigator as any).userAgent
@@ -51,18 +54,16 @@ export class AuthService {
       deviceName
     };
 
-    // debug helper: shows exactly what's sent (remove in production if desired)
-    // eslint-disable-next-line no-console
-    console.log('[AuthService] login payload', body);
-
-    return this.#api
-      .request<LoginResponse>('/auth/login', {
-        method: 'POST',
-        body
+    // store token and invalidate cached /me
+    return this.#api.request<LoginResponse>('/auth/login', {
+      method: 'POST',
+      body
+    }).pipe(
+      tap((res) => {
+        this.#tokenStorage.setToken(res.token);
+        this._me$ = null;
       })
-      .pipe(
-        tap((res) => this.#tokenStorage.setToken(res.token))
-      );
+    );
   }
 
   register(payload: RegisterRequest): Observable<unknown> {
@@ -73,16 +74,30 @@ export class AuthService {
   }
 
   me(): Observable<MeResponse> {
-    return this.#api.request<ApiEnvelope<MeResponse> | MeResponse>('/auth/me', {
+    if (this._me$) return this._me$;
+
+    this._me$ = this.#api.request<ApiEnvelope<MeResponse> | MeResponse>('/auth/me', {
       method: 'GET'
-    }).pipe(map(unwrapApiEnvelope));
+    }).pipe(
+      map(unwrapApiEnvelope),
+      shareReplay({ bufferSize: 1, refCount: false }),
+      catchError((err) => {
+        this._me$ = null;
+        throw err;
+      })
+    );
+
+    return this._me$;
   }
 
   logout(): Observable<unknown> {
     return this.#api.request<ApiEnvelope<unknown> | unknown>('/auth/logout', {
       method: 'POST'
     }).pipe(
-      tap(() => this.#tokenStorage.clearToken()),
+      tap(() => {
+        this.#tokenStorage.clearToken();
+        this._me$ = null;
+      }),
       map(unwrapApiEnvelope)
     );
   }
@@ -93,5 +108,6 @@ export class AuthService {
 
   clearToken(): void {
     this.#tokenStorage.clearToken();
+    this._me$ = null;
   }
 }
