@@ -2,7 +2,7 @@
 require_once __DIR__ . '/../bootstrap.php';
 
 // ============================================================================
-// PHASE 2: Rate Limiting Middleware
+// PHASE 2: Rate Limiting Middleware (with fail-safe)
 // ============================================================================
 require_once __DIR__ . '/../app/Core/RateLimiter.php';
 require_once __DIR__ . '/../app/Core/Database.php';
@@ -12,23 +12,31 @@ use App\Core\RateLimiter;
 use App\Core\Database;
 use App\Core\Auth;
 
-// Inicializar rate limiter
-$rateLimiter = new RateLimiter();
+// Rate limiting with fail-safe - if it fails, allow the request through
+$rateLimitResult = null;
+try {
+    // Inicializar rate limiter
+    $rateLimiter = new RateLimiter();
 
-// Obtener user ID si está autenticado (para rate limit por usuario)
-$userId = null;
-$authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
-if ($authHeader && preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
-    try {
-        $payload = Auth::parseToken($matches[1]);
-        $userId = $payload['user_id'] ?? null;
-    } catch (\Exception $e) {
-        // Token inválido, continuar sin user_id
+    // Obtener user ID si está autenticado (para rate limit por usuario)
+    $userId = null;
+    $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+    if ($authHeader && preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
+        try {
+            $payload = Auth::parseToken($matches[1]);
+            $userId = $payload['user_id'] ?? null;
+        } catch (\Exception $e) {
+            // Token inválido, continuar sin user_id
+        }
     }
-}
 
-// Verificar rate limit
-$rateLimitResult = $rateLimiter->handle($userId);
+    // Verificar rate limit
+    $rateLimitResult = $rateLimiter->handle($userId);
+} catch (\Throwable $e) {
+    // Log error but allow request through (fail-open)
+    error_log('RateLimiter error (allowing request): ' . $e->getMessage());
+    $rateLimitResult = true;
+}
 
 if ($rateLimitResult === false) {
     // Excedió rate limit

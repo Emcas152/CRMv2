@@ -38,7 +38,7 @@
               {
                 "glob": "**/*",
                 "input": "public",
-                "output": "/"
+                "output": "/crm/"
               }
             ],
             "styles": [

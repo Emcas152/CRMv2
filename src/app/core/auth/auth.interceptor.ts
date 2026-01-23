@@ -23,13 +23,20 @@ export const authInterceptorFn: HttpInterceptorFn = (req, next) => {
     catchError((error: HttpErrorResponse) => {
       // Handle 401 Unauthorized - token expired or invalid
       if (error.status === 401) {
-        // Clear the invalid token
-        tokenStorage.clearToken();
+        // Only redirect if not already on login/register pages and not a login request
+        const currentUrl = router.url;
+        const isAuthPage = currentUrl.startsWith('/login') || currentUrl.startsWith('/register');
+        const isLoginRequest = req.url.includes('/auth/login') || req.url.includes('/auth/register');
 
-        // Redirect to login page
-        router.navigate(['/login'], {
-          queryParams: { sessionExpired: 'true' }
-        });
+        if (!isAuthPage && !isLoginRequest) {
+          // Clear the invalid token
+          tokenStorage.clearToken();
+
+          // Redirect to login page
+          router.navigate(['/login'], {
+            queryParams: { sessionExpired: 'true' }
+          });
+        }
       }
 
       return throwError(() => error);

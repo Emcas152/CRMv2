@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { map, tap, shareReplay, catchError } from 'rxjs/operators';
+import { map, tap, shareReplay, catchError, timeout } from 'rxjs/operators';
 import { Observable, of } from 'rxjs';
 
 import { ApiClientService } from '../api/api-client.service';
@@ -59,9 +59,19 @@ export class AuthService {
       method: 'POST',
       body
     }).pipe(
+      timeout(30000), // 30 second timeout to prevent indefinite hanging
       tap((res) => {
+        if (!res || !res.token) {
+          console.error('Login: Invalid response - missing token', res);
+          throw new Error('Respuesta inválida del servidor');
+        }
+        console.log('Login successful, storing token');
         this.#tokenStorage.setToken(res.token);
         this._me$ = null;
+      }),
+      catchError((err) => {
+        console.error('Login error:', err);
+        throw err;
       })
     );
   }
@@ -80,6 +90,8 @@ export class AuthService {
       method: 'GET'
     }).pipe(
       map(unwrapApiEnvelope),
+      // Prevent indefinite hangs that can block navigation/UX in production.
+      timeout(15000),
       shareReplay({ bufferSize: 1, refCount: false }),
       catchError((err) => {
         this._me$ = null;

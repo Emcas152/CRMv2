@@ -1,4 +1,4 @@
-import { JsonPipe } from '@angular/common';
+import { JsonPipe, CommonModule } from '@angular/common';
 import { ChangeDetectorRef, Component, ElementRef, OnDestroy, OnInit, ViewChild, inject } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
@@ -29,6 +29,7 @@ import { AppointmentsService, Appointment } from '../../../core/services/appoint
   standalone: true,
   imports: [
     ReactiveFormsModule,
+    CommonModule,
     RowComponent,
     ColComponent,
     CardComponent,

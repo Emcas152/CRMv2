@@ -7,6 +7,25 @@ class Auth
 {
     private static $secretKey;
 
+    private static function debugEnabled(): bool
+    {
+        $env = getenv('APP_ENV') ?: 'local';
+        if ($env !== 'production') return true;
+
+        $flag = getenv('APP_DEBUG_AUTH');
+        return filter_var($flag ?: false, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    private static function debugLog(string $message): void
+    {
+        if (!self::debugEnabled()) return;
+        try {
+            error_log($message);
+        } catch (Throwable $_) {
+            // never block request flow on logging
+        }
+    }
+
     public static function init()
     {
         $config = require __DIR__ . '/../config/app.php';
@@ -48,13 +67,13 @@ class Auth
         self::init();
 
         if (!$token) {
-            error_log('verifyToken: Token is empty or null');
+            self::debugLog('verifyToken: Token is empty or null');
             return false;
         }
 
         $tokenParts = explode('.', $token);
         if (count($tokenParts) !== 3) {
-            error_log('verifyToken: Token does not have 3 parts. Parts count: ' . count($tokenParts));
+            self::debugLog('verifyToken: Token does not have 3 parts. Parts count: ' . count($tokenParts));
             return false;
         }
 
@@ -64,20 +83,18 @@ class Auth
         $validSignature = self::base64UrlEncode($validSignature);
 
         if ($signature !== $validSignature) {
-            error_log('verifyToken: Signature mismatch');
-            error_log('Expected: ' . $validSignature);
-            error_log('Got: ' . $signature);
+            self::debugLog('verifyToken: Signature mismatch');
             return false;
         }
 
         $payload = json_decode(self::base64UrlDecode($payload), true);
 
         if (!isset($payload['exp']) || $payload['exp'] < time()) {
-            error_log('verifyToken: Token expired. Exp: ' . ($payload['exp'] ?? 'NOT SET') . ', Now: ' . time());
+            self::debugLog('verifyToken: Token expired. Exp: ' . ($payload['exp'] ?? 'NOT SET') . ', Now: ' . time());
             return false;
         }
 
-        error_log('verifyToken: Token valid! User ID: ' . $payload['user_id']);
+        self::debugLog('verifyToken: Token valid! User ID: ' . ($payload['user_id'] ?? 'UNKNOWN'));
         return $payload;
     }
 
@@ -86,10 +103,10 @@ class Auth
      */
     public static function getTokenFromHeader()
     {
-        // Debug: registrar todas las fuentes posibles
-        error_log('=== TOKEN DEBUG ===');
-        error_log('$_SERVER[HTTP_AUTHORIZATION]: ' . ($_SERVER['HTTP_AUTHORIZATION'] ?? 'NOT SET'));
-        error_log('$_SERVER[REDIRECT_HTTP_AUTHORIZATION]: ' . ($_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? 'NOT SET'));
+        // Debug is gated by env (APP_DEBUG_AUTH) to avoid production hangs due to excessive logging.
+        self::debugLog('=== TOKEN DEBUG ===');
+        self::debugLog('$_SERVER[HTTP_AUTHORIZATION]: ' . ($_SERVER['HTTP_AUTHORIZATION'] ?? 'NOT SET'));
+        self::debugLog('$_SERVER[REDIRECT_HTTP_AUTHORIZATION]: ' . ($_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? 'NOT SET'));
         
         // Intentar desde $_SERVER primero
         $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? 
@@ -99,19 +116,19 @@ class Auth
         // Si no está, intentar apache_request_headers si existe
         if (empty($authHeader) && function_exists('apache_request_headers')) {
             $apacheHeaders = apache_request_headers();
-            error_log('apache_request_headers(): ' . json_encode($apacheHeaders));
+            self::debugLog('apache_request_headers(): ' . json_encode($apacheHeaders));
             $authHeader = $apacheHeaders['Authorization'] ?? $apacheHeaders['authorization'] ?? '';
         }
         
         // Si no está, intentar getallheaders
         if (empty($authHeader) && function_exists('getallheaders')) {
             $headers = getallheaders();
-            error_log('getallheaders(): ' . json_encode($headers));
+            self::debugLog('getallheaders(): ' . json_encode($headers));
             $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? '';
         }
         
-        error_log('Final authHeader: ' . ($authHeader ?: 'EMPTY'));
-        error_log('=== END TOKEN DEBUG ===');
+        self::debugLog('Final authHeader: ' . ($authHeader ?: 'EMPTY'));
+        self::debugLog('=== END TOKEN DEBUG ===');
 
         if (preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
             return $matches[1];
@@ -126,12 +143,12 @@ class Auth
     public static function getCurrentUser()
     {
         $token = self::getTokenFromHeader();
-        error_log('=== getCurrentUser DEBUG ===');
-        error_log('Extracted token: ' . ($token ?: 'NULL'));
+        self::debugLog('=== getCurrentUser DEBUG ===');
+        self::debugLog('Extracted token: ' . ($token ? '[present]' : 'NULL'));
         
         $result = self::verifyToken($token);
-        error_log('verifyToken result: ' . ($result ? json_encode($result) : 'FALSE'));
-        error_log('=== END getCurrentUser DEBUG ===');
+        self::debugLog('verifyToken result: ' . ($result ? '[valid]' : 'FALSE'));
+        self::debugLog('=== END getCurrentUser DEBUG ===');
         
         return $result;
     }
