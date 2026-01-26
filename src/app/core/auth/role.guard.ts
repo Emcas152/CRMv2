@@ -5,6 +5,13 @@ import { catchError, map, of, timeout } from 'rxjs';
 import { AuthService } from './auth.service';
 import { TokenStorageService } from './token-storage.service';
 
+// Normalize Spanish role synonyms to English
+function normalizeRole(role: string): string {
+  const normalized = role.toLowerCase();
+  if (normalized === 'paciente') return 'patient';
+  return normalized;
+}
+
 export function requireRoles(roles: string[]): CanMatchFn {
   return () => {
     const auth = inject(AuthService);
@@ -21,7 +28,7 @@ export function requireRoles(roles: string[]): CanMatchFn {
     // (Still enforced server-side; this only improves UX/routing.)
     const tokenRole = tokenStorage.getTokenRole();
     if (tokenRole) {
-      const normalizedRole = tokenRole.toLowerCase();
+      const normalizedRole = normalizeRole(tokenRole);
       if (normalizedRole === 'superadmin') return true;
       // Check if any of the required roles match (case-insensitive)
       if (roles.some(r => r.toLowerCase() === normalizedRole)) return true;
@@ -38,7 +45,7 @@ export function requireRoles(roles: string[]): CanMatchFn {
       map((res) => {
         const role = res?.user?.role;
         if (typeof role === 'string') {
-          const normalizedRole = role.toLowerCase();
+          const normalizedRole = normalizeRole(role);
           if (normalizedRole === 'superadmin') return true;
           if (roles.some(r => r.toLowerCase() === normalizedRole)) return true;
         }

@@ -26,29 +26,33 @@ export const authChildGuardFn: CanActivateChildFn = (route) => {
     return router.parseUrl('/login');
   }
 
-  // Si el usuario está accediendo a la ruta raíz del CRM, verificar el rol
-  const fullPath = route.pathFromRoot.map(r => r.url.map(s => s.path).join('/')).join('/').replace(/\/+/g, '/');
+  const fullPath = route.pathFromRoot
+    .map(r => r.url.map(s => s.path).join('/'))
+    .join('/')
+    .replace(/\/+/g, '/');
 
-  // Only redirect patients from the root CRM page to appointments
-  // For other routes like /crm/welcome, let the route's own guards handle it
+  // Solo redirigir pacientes desde la raíz del CRM
   if (fullPath === '/crm' || fullPath === '/crm/' || fullPath === '' || fullPath === 'crm') {
     const tokenRole = tokenStorage.getTokenRole();
-    if (tokenRole && tokenRole.toLowerCase() === 'patient') {
+    const normalizedRole = tokenRole?.toLowerCase();
+
+    // Detectar paciente aunque sea PACIENTE o patient
+    if (normalizedRole && ['patient', 'paciente'].includes(normalizedRole)) {
       return router.parseUrl('/crm/welcome');
     }
 
-    // Only call auth.me() if we couldn't get the role from the token
+    // Si el rol no está en el token, consultar /me
     if (!tokenRole) {
       return auth.me().pipe(
-        timeout(5000), // 5 second timeout
+        timeout(5000),
         map(res => {
-          const role = res?.user?.role;
-          if (typeof role === 'string' && role.toLowerCase() === 'patient') {
+          const role = res?.user?.role?.toLowerCase();
+          if (role && ['patient', 'paciente'].includes(role)) {
             return router.parseUrl('/crm/welcome');
           }
           return true;
         }),
-        catchError(() => of(true)) // On error, allow access to CRM home
+        catchError(() => of(true))
       );
     }
   }

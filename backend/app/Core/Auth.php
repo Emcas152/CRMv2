@@ -30,19 +30,32 @@ class Auth
         self::$secretKey = $config['secret_key'];
     }
 
-    public static function generateToken($userId, $userEmail, $userRole)
+    public static function generateToken($userId, $userEmail, $userRole, $ttlSeconds = null)
     {
         self::init();
 
         $header = json_encode(['typ' => 'JWT', 'alg' => 'HS256']);
         $config = require __DIR__ . '/../../config/app.php';
+
+        $ttl = null;
+        if (is_int($ttlSeconds) || is_float($ttlSeconds) || (is_string($ttlSeconds) && $ttlSeconds !== '')) {
+            $ttl = intval($ttlSeconds);
+            if ($ttl <= 0) {
+                $ttl = null;
+            }
+        }
+        $defaultTtl = intval($config['jwt_expiration'] ?? 0);
+        if ($defaultTtl <= 0) {
+            $defaultTtl = 86400;
+        }
+        $effectiveTtl = $ttl ?? $defaultTtl;
         
         $payload = json_encode([
             'user_id' => $userId,
             'email' => $userEmail,
             'role' => $userRole,
             'iat' => time(),
-            'exp' => time() + $config['jwt_expiration']
+            'exp' => time() + $effectiveTtl
         ]);
 
         $base64UrlHeader = self::base64UrlEncode($header);

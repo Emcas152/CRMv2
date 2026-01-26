@@ -16,9 +16,9 @@ if (!$validator->validate()) {
 $email = Sanitizer::email($input['email']);
 $password = $input['password'];
 
-// Buscar usuario
 $db = Database::getInstance();
-// Crear función para guardar errores en archivo
+
+// Logger seguro
 $logFile = __DIR__ . '/../logs/errors.log';
 $append_log = function($msg) use ($logFile) {
     $time = date('Y-m-d H:i:s');
@@ -29,22 +29,24 @@ $append_log = function($msg) use ($logFile) {
 
 // Buscar usuario
 $user = $db->fetchOne(
-    'SELECT * FROM users WHERE email = ? LIMIT 1',
+    'SELECT id, name, email, password, role, email_verified FROM users WHERE email = ? LIMIT 1',
     [$email]
 );
 
-// Log para depuración (temporal) - no escribir contraseñas en logs
 error_log("[LOGIN] attempt for email={$email}");
+
 if (!$user) {
     error_log("[LOGIN] user not found: {$email}");
+    $append_log("Login failed: user not found for email={$email}");
     Response::error('Credenciales incorrectas', 401);
 }
 
+// Log user found (sin password)
 error_log("[LOGIN] user found id={$user['id']} email={$user['email']} role={$user['role']}");
+$append_log("User found: id={$user['id']}, email={$user['email']}, role={$user['role']}");
 
-// Guardar hash de contraseña para depuración
+// Verificar contraseña
 $passwordHash = $user['password'] ?? '';
-$append_log("User found: id={$user['id']}, email={$user['email']}, has_password=" . (!empty($passwordHash) ? 'yes' : 'no'));
 
 if (!Auth::verifyPassword($password, $passwordHash)) {
     error_log("[LOGIN] password verification FAILED for user id={$user['id']}");
@@ -52,17 +54,24 @@ if (!Auth::verifyPassword($password, $passwordHash)) {
     Response::error('Credenciales incorrectas', 401);
 }
 
-// Generar token
-$token = Auth::generateToken($user['id'], $user['email'], $user['role']);
+// Normalizar rol
+$normalizedRole = strtolower(trim($user['role'] ?? ''));
 
-// Responder directamente con el formato esperado por el frontend
+// Generar token
+$token = Auth::generateToken(
+    $user['id'],
+    $user['email'],
+    $normalizedRole
+);
+
+// Respuesta estándar al frontend
 Response::json([
     'token' => $token,
     'user' => [
         'id' => $user['id'],
         'name' => $user['name'],
         'email' => $user['email'],
-        'role' => $user['role'],
+        'role' => $normalizedRole,
         'email_verified' => isset($user['email_verified']) ? boolval($user['email_verified']) : false
     ]
 ], 200);

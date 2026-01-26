@@ -36,6 +36,11 @@ class AuthController
         self::initCore();
         $input = Request::body();
 
+        // Compatibilidad: algunos clientes envían `login` en lugar de `email`
+        if (!isset($input['email']) && isset($input['login'])) {
+            $input['email'] = $input['login'];
+        }
+
         $validator = Validator::make($input, [
             'email' => 'required|email',
             'password' => 'required|string'
@@ -47,8 +52,19 @@ class AuthController
             Response::validationError(['message' => $e->getMessage()]);
         }
 
-        $email = Sanitizer::email($input['login']);
+        $email = Sanitizer::email((string)($input['email'] ?? ''));
         $password = $input['password'];
+
+        // Logger a archivo: crea `backend/logs/errors.log` si no existe
+        $logFile = __DIR__ . '/../../logs/errors.log';
+        $appendLog = function (string $msg) use ($logFile): void {
+            $time = date('c');
+            $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+            $line = "{$time} [{$ip}] {$msg}\n";
+            @mkdir(dirname($logFile), 0755, true);
+            @file_put_contents($logFile, $line, FILE_APPEND | LOCK_EX);
+        };
+        $appendLog("[LOGIN] attempt email={$email}");
 
         $db = Database::getInstance();
         $attemptTracker = new LoginAttemptTracker($db);
@@ -59,6 +75,7 @@ class AuthController
             $minutesRemaining = $lockInfo['minutes_remaining'] ?? 15;
             
             $attemptTracker->recordAttempt($email, false, 'account_locked');
+            $appendLog("[LOGIN] account_locked email={$email} minutes_remaining={$minutesRemaining}");
             
             Response::error(
                 "Cuenta temporalmente bloqueada por múltiples intentos fallidos. " .
@@ -72,12 +89,14 @@ class AuthController
         if (!$user) {
             // FASE 2: Registrar intento fallido
             $attemptTracker->recordAttempt($email, false, 'user_not_found');
+            $appendLog("[LOGIN] user_not_found email={$email}");
             Response::error('Credenciales incorrectas', 401);
         }
 
         if (!Auth::verifyPassword($password, $user['password'] ?? '')) {
             // FASE 2: Registrar intento fallido
             $attemptTracker->recordAttempt($email, false, 'invalid_password');
+            $appendLog("[LOGIN] invalid_password email={$email} user_id=" . ($user['id'] ?? 'null'));
             
             $remainingAttempts = LoginAttemptTracker::MAX_ATTEMPTS - $attemptTracker->getRecentFailedAttempts($email);
             if ($remainingAttempts > 0 && $remainingAttempts <= 2) {
@@ -85,6 +104,7 @@ class AuthController
                     "Credenciales incorrectas. Le quedan {$remainingAttempts} intentos antes del bloqueo.",
                     401
                 );
+                $appendLog("[LOGIN] requires_2fa email={$email} user_id=" . ($user['id'] ?? 'null') . " method={$method}");
             }
             
             Response::error('Credenciales incorrectas', 401);
@@ -93,6 +113,12 @@ class AuthController
         // FASE 2: Login exitoso - registrar y resetear intentos
         $attemptTracker->recordAttempt($email, true);
         $attemptTracker->resetAttempts($email);
+
+        // Normalizar rol para token y frontend
+        $normalizedRole = strtolower(trim((string)($user['role'] ?? '')));
+        if ($normalizedRole === 'paciente') {
+            $normalizedRole = 'patient';
+        }
 
         // FASE 2: Verificar si tiene 2FA habilitado
         $twoFA = new TwoFactorAuth($db);
@@ -120,7 +146,7 @@ class AuthController
                 $tempToken = Auth::generateToken(
                     $user['id'], 
                     $user['email'], 
-                    $user['role'],
+                    $normalizedRole,
                     300  // 5 minutos de validez
                 );
                 
@@ -139,12 +165,14 @@ class AuthController
                     'expires_in' => TwoFactorAuth::CODE_VALIDITY_MINUTES * 60
                 ], 200);
             } else {
+                $appendLog("[LOGIN] 2fa_code_generation_failed email={$email} user_id=" . ($user['id'] ?? 'null') . " method={$method}");
                 Response::error('Error al generar código de verificación', 500);
             }
         }
 
         // Login sin 2FA - generar token normal
-        $token = Auth::generateToken($user['id'], $user['email'], $user['role']);
+        $token = Auth::generateToken($user['id'], $user['email'], $normalizedRole);
+        $appendLog("[LOGIN] success email={$email} user_id=" . ($user['id'] ?? 'null') . " role={$normalizedRole}");
 
         Response::json([
             'token' => $token,
@@ -152,7 +180,7 @@ class AuthController
                 'id' => $user['id'],
                 'name' => $user['name'] ?? null,
                 'email' => $user['email'],
-                'role' => $user['role'] ?? null,
+                'role' => $normalizedRole,
                 'email_verified' => isset($user['email_verified']) ? boolval($user['email_verified']) : false
             ]
         ], 200);
@@ -215,7 +243,11 @@ class AuthController
         }
         
         // Generar token final (con duración normal)
-        $token = Auth::generateToken($user['id'], $user['email'], $user['role']);
+        $normalizedRole = strtolower(trim((string)($user['role'] ?? '')));
+        if ($normalizedRole === 'paciente') {
+            $normalizedRole = 'patient';
+        }
+        $token = Auth::generateToken($user['id'], $user['email'], $normalizedRole);
 
         Response::json([
             'token' => $token,
@@ -223,7 +255,7 @@ class AuthController
                 'id' => $user['id'],
                 'name' => $user['name'] ?? null,
                 'email' => $user['email'],
-                'role' => $user['role'] ?? null,
+                'role' => $normalizedRole,
                 'email_verified' => isset($user['email_verified']) ? boolval($user['email_verified']) : false
             ]
         ], 200);
@@ -332,10 +364,16 @@ class AuthController
         if (!$userData) {
             Response::notFound('Usuario no encontrado');
         }
+        $normalizedRole = strtolower(trim((string)($userData['role'] ?? '')));
+        if ($normalizedRole === 'paciente') {
+            $normalizedRole = 'patient';
+        }
+        $userData['role'] = $normalizedRole;
+
         $response = ['user' => $userData];
-        if ($userData['role'] === 'patient') {
+        if ($normalizedRole === 'patient') {
             $patient = $db->fetchOne('SELECT * FROM patients WHERE user_id = ?', [$userData['id']]);
-            $response['patient'] = $patient;
+            $response['patient'] = $patient ?: [];
         }
         Response::success($response);
     }
