@@ -18,7 +18,7 @@ export class ProfileService {
       .pipe(map(unwrapApiEnvelope));
   }
 
-  update(payload: { name?: string; email?: string }): Observable<unknown> {
+  update(payload: { name?: string; email?: string; phone?: string; loyalty_points_per_item?: number }): Observable<unknown> {
     return this.#api
       .request<ApiEnvelope<unknown> | unknown>('/profile', {
         method: 'PUT',

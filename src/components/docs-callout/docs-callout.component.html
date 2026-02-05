@@ -3,17 +3,15 @@
 </c-callout>
 
 <ng-template #defaultTpl>
-  @let componentName = name();
-  @let isPlural = plural();
-  @if (!!componentName) {
+  <ng-container *ngIf="name() as componentName">
     <p>
-      An Angular {{ componentName }} component{{ isPlural ? 's' : '' }} {{ isPlural ? 'have' : 'has' }} been created as a native
+      An Angular {{ componentName }} component{{ plural() ? 's' : '' }} {{ plural() ? 'have' : 'has' }} been created as a native
       Angular
       version
-      of Bootstrap {{ componentName }}. {{ componentName }} {{ isPlural ? 'are' : 'is' }} delivered with some new features,
+      of Bootstrap {{ componentName }}. {{ plural() ? 'are' : 'is' }} delivered with some new features,
       variants, and unique design that matches CoreUI Design System requirements.
     </p>
-  }
+  </ng-container>
 
   <ng-content />
 

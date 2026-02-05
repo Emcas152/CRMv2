@@ -50,6 +50,8 @@
                       <div>
                         <div class="fw-semibold">{{ currentPatient.name }}</div>
                         <div class="small text-body-secondary">{{ currentPatient.phone }}</div>
+                        <div *ngIf="currentPatient.nit" class="small text-body-secondary">NIT: {{ currentPatient.nit }}</div>
+                        <div *ngIf="currentPatient.email" class="small text-body-secondary">{{ currentPatient.email }}</div>
                       </div>
                       <div class="d-flex gap-2">
                         <button cButton color="danger" size="sm" type="button" (click)="form.controls.patient_id.setValue(0); currentPatient = null">Quitar</button>

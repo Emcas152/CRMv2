@@ -65,7 +65,11 @@ if ($method === 'POST' && !$id) {
         }
 
         $doc = $db->fetchOne('SELECT * FROM documents WHERE id = ?', [$docId]);
-        $doc['url'] = '/uploads/documents/' . intval($postPatientId) . '/' . $doc['filename'];
+        // Provide safe endpoints for viewing/downloading instead of exposing raw upload path
+        $doc['file_url'] = '/documents/' . intval($docId) . '/file';
+        $doc['download_url'] = '/documents/' . intval($docId) . '/download';
+        // Backwards compatibility
+        $doc['url'] = $doc['file_url'];
 
         Response::success($doc, 'Documento subido correctamente', 201);
     } catch (Exception $e) {
@@ -86,8 +90,19 @@ if ($id && $action === 'download' && $method === 'GET') {
         Response::forbidden('No tienes permisos para descargar este documento');
     }
 
-    $url = '/uploads/documents/' . intval($doc['patient_id']) . '/' . $doc['filename'];
-    Response::success(['url' => $url, 'filename' => $doc['original_filename']]);
+    // Stream file as attachment for download (safer than exposing upload path)
+    $filePath = __DIR__ . '/../../uploads/documents/' . intval($doc['patient_id']) . '/' . $doc['filename'];
+    if (!file_exists($filePath)) {
+        Response::notFound('Archivo no encontrado en el servidor');
+    }
+
+    $mime = $doc['mime'] ?? mime_content_type($filePath);
+    header('Content-Type: ' . $mime);
+    header('Content-Length: ' . filesize($filePath));
+    header('Content-Disposition: attachment; filename="' . basename($doc['original_filename'] ?? $doc['filename']) . '"');
+    header('Cache-Control: private, max-age=0, must-revalidate');
+    readfile($filePath);
+    exit;
 }
 
 // Serve file inline (for viewer) - streams the file with appropriate headers

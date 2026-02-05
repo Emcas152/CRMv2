@@ -5,103 +5,125 @@
         <strong>Documentos</strong>
       </c-card-header>
       <c-card-body>
-        @if (error) {
-          <c-alert color="danger" class="mb-3">{{ error }}</c-alert>
-        }
+        <c-alert *ngIf="error" color="danger" class="mb-3">{{ error }}</c-alert>
 
-        @if (actionInfo) {
-          <c-alert color="success" class="mb-3">{{ actionInfo }}</c-alert>
-        }
+        <c-alert *ngIf="actionInfo" color="success" class="mb-3">{{ actionInfo }}</c-alert>
 
         <form cForm [formGroup]="form" class="mb-3">
-          <c-row class="g-3">
-            <c-col md="3">
-              <label cLabel for="patientId">ID de paciente</label>
-              <input id="patientId" cFormControl type="number" formControlName="patientId" />
-              @if (form.controls.patientId.touched && form.controls.patientId.invalid) {
-                <div class="text-danger small mt-1">Ingresa un ID de paciente válido.</div>
-              }
+          <c-row class="g-2 align-items-end">
+            <c-col md="4" lg="3">
+              <label cLabel for="patientId">Paciente (ID)</label>
+              <input id="patientId" cFormControl type="number" formControlName="patientId" placeholder="Ej: 123" />
+              <div *ngIf="form.controls.patientId.touched && form.controls.patientId.invalid" class="text-danger small mt-1">Ingresa un ID válido.</div>
             </c-col>
 
-            <c-col md="5">
-              <label cLabel for="title">Título (opcional)</label>
-              <input id="title" cFormControl type="text" formControlName="title" />
-            </c-col>
-
-            <c-col md="2">
-              <label cLabel for="page">Página</label>
-              <input id="page" cFormControl type="number" min="1" formControlName="page" />
-            </c-col>
-            <c-col md="2">
-              <label cLabel for="per_page">Por página</label>
-              <input id="per_page" cFormControl type="number" min="1" max="200" formControlName="per_page" />
-            </c-col>
-
-            <c-col md="4">
-              <label cLabel for="file">Archivo</label>
-              <input id="file" class="form-control" type="file" (change)="onFileChange($event)" />
-            </c-col>
-
-            <c-col xs="12" class="d-flex gap-2">
+            <c-col md="8" lg="9" class="d-flex flex-wrap gap-2">
               <button cButton color="primary" type="button" (click)="refresh()" [disabled]="isLoading">
                 {{ isLoading ? 'Cargando…' : 'Listar' }}
               </button>
-              <button cButton color="success" type="button" (click)="upload()" [disabled]="isUploading">
-                {{ isUploading ? 'Subiendo…' : 'Subir' }}
+              <button cButton color="success" type="button" (click)="toggleUpload()" [disabled]="form.controls.patientId.invalid">
+                {{ showUpload ? 'Cerrar subida' : 'Subir documento' }}
               </button>
               <div class="text-body-secondary small align-self-center">Total: {{ total }}</div>
+
+              <!-- keep pagination state in the form, but hide inputs to reduce UI noise -->
+              <input type="hidden" formControlName="page" />
+              <input type="hidden" formControlName="per_page" />
             </c-col>
           </c-row>
+
+          <div *ngIf="showUpload" class="mt-3 p-3 border rounded" style="background: rgba(255,255,255,.03)">
+            <c-row class="g-3 align-items-end">
+              <c-col md="5">
+                <label cLabel for="title">Título (opcional)</label>
+                <input id="title" cFormControl type="text" formControlName="title" placeholder="Ej: Consentimiento informado" />
+              </c-col>
+              <c-col md="5">
+                <label cLabel for="file">Archivo</label>
+                <input id="file" class="form-control" type="file" (change)="onFileChange($event)" />
+              </c-col>
+              <c-col md="2" class="d-flex gap-2">
+                <button cButton color="success" type="button" (click)="upload()" [disabled]="isUploading">
+                  {{ isUploading ? 'Subiendo…' : 'Subir' }}
+                </button>
+              </c-col>
+            </c-row>
+          </div>
         </form>
 
-        <form cForm [formGroup]="signForm" class="mb-4">
-          <div class="mb-2"><strong>Firmar documento</strong></div>
-          <c-row class="g-3">
-            <c-col md="2">
-              <label cLabel for="documentId">ID de documento</label>
-              <input id="documentId" cFormControl type="number" formControlName="documentId" />
-              @if (signForm.controls.documentId.touched && signForm.controls.documentId.invalid) {
-                <div class="text-danger small mt-1">Requerido.</div>
-              }
-            </c-col>
-            <c-col md="3">
-              <label cLabel for="method">Método (opcional)</label>
-              <input id="method" cFormControl type="text" formControlName="method" />
-            </c-col>
-            <c-col md="4">
-              <label cLabel for="meta">Meta (opcional)</label>
-              <input id="meta" cFormControl type="text" formControlName="meta" />
-            </c-col>
-            <c-col md="3">
-              <label cLabel for="signature">Firma (opcional)</label>
-              <input id="signature" class="form-control" type="file" (change)="onSignFileChange($event)" />
-            </c-col>
-            <c-col xs="12">
-              <button cButton color="warning" type="button" (click)="sign()" [disabled]="isUploading">
-                {{ isUploading ? 'Firmando…' : 'Firmar' }}
-              </button>
-            </c-col>
-          </c-row>
-        </form>
+        <div *ngIf="showSign && signTarget" class="mb-4 p-3 border rounded" style="background: rgba(255,255,255,.03)">
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+            <strong>Firma interactiva: Documento #{{ signTarget.id }}</strong>
+            <button cButton color="secondary" size="sm" type="button" (click)="cancelSign()">Cerrar</button>
+          </div>
+
+          <div *ngIf="signLoading" class="text-body-secondary small">Cargando documento…</div>
+
+          <div *ngIf="!signLoading" class="d-flex flex-column gap-3">
+            <div class="d-flex flex-wrap gap-3 align-items-end">
+              <div style="min-width:260px">
+                <label cLabel for="sigFile">Firma (imagen PNG/JPG)</label>
+                <input id="sigFile" class="form-control" type="file" accept="image/*" (change)="onSignatureFileChange($event)" />
+                <div class="text-body-secondary small mt-1">Arrastra la firma sobre el documento.</div>
+              </div>
+              <div style="min-width:220px">
+                <label cLabel for="sigScale">Tamaño</label>
+                <input id="sigScale" class="form-range" type="range" min="0.5" max="2.5" step="0.1" [value]="signatureScale" (input)="onSignatureScaleChange($event)" />
+              </div>
+              <div class="d-flex gap-2">
+                <button cButton color="secondary" size="sm" type="button" (click)="resetSignaturePosition()" [disabled]="!signatureImg">Reubicar</button>
+                <button cButton color="warning" size="sm" type="button" (click)="applyCanvasSignature()" [disabled]="signApplying || !signatureImg">
+                  {{ signApplying ? 'Firmando…' : 'Confirmar firma' }}
+                </button>
+              </div>
+            </div>
+
+            <form cForm [formGroup]="signForm">
+              <c-row class="g-3">
+                <c-col md="3">
+                  <label cLabel for="method">Método (opcional)</label>
+                  <input id="method" cFormControl type="text" formControlName="method" placeholder="Ej: manuscrita" />
+                </c-col>
+                <c-col md="9">
+                  <label cLabel for="meta">Meta (opcional)</label>
+                  <input id="meta" cFormControl type="text" formControlName="meta" placeholder="Ej: firmado por paciente" />
+                </c-col>
+              </c-row>
+            </form>
+
+            <div class="border rounded p-2" style="overflow:auto;max-height:65vh">
+              <canvas
+                #signCanvas
+                style="width:100%;height:auto;touch-action:none;cursor:grab;display:block"
+                (pointerdown)="onSignPointerDown($event)"
+                (pointermove)="onSignPointerMove($event)"
+                (pointerup)="onSignPointerUp($event)"
+                (pointercancel)="onSignPointerUp($event)"
+              ></canvas>
+            </div>
+          </div>
+        </div>
 
         <table cTable [striped]="true">
           <thead>
             <tr>
+              <th scope="col">Preview</th>
               <th scope="col">ID</th>
-              <th scope="col">Paciente</th>
               <th scope="col">Título</th>
-              <th scope="col">Nombre de archivo</th>
-              <th scope="col">Mime</th>
-              <th scope="col">Reemplazar</th>
+              <th scope="col">Archivo</th>
+              <th scope="col">Fecha</th>
+              <th scope="col">Estado</th>
               <th scope="col">Acciones</th>
             </tr>
           </thead>
           <tbody>
-            @for (d of items; track d.id) {
-              <tr>
-                <td>{{ d.id }}</td>
-                <td>{{ d.patient_id }}</td>
-                <td>
+            <tr *ngFor="let d of items; trackBy: trackById">
+                <td style="width:80px;vertical-align:middle">
+                  <img *ngIf="isImage(d) && previewUrl(d)" [src]="previewUrl(d)" alt="preview" style="max-width:72px;max-height:72px;object-fit:cover;border-radius:4px;border:1px solid #e9ecef" />
+                  <div *ngIf="!(isImage(d) && previewUrl(d))" class="text-body-secondary small">No preview</div>
+                </td>
+                <td class="align-middle">{{ d.id }}</td>
+                <td class="align-middle" style="min-width:180px">
                   <input
                     class="form-control form-control-sm"
                     type="text"
@@ -110,35 +132,39 @@
                     [disabled]="actingId === d.id"
                   />
                 </td>
-                <td>{{ d.filename ?? '' }}</td>
-                <td>{{ d.mime ?? d.mime_type ?? '' }}</td>
-                <td>
-                  <input
-                    class="form-control form-control-sm"
-                    type="file"
-                    (change)="onReplaceFileChange(d, $event)"
-                    [disabled]="actingId === d.id"
-                  />
+                <td class="align-middle">
+                  <div class="small">{{ d.original_filename ?? d.filename ?? '' }}</div>
+                  <div class="text-body-secondary small">{{ d.mime ?? d.mime_type ?? '' }}</div>
                 </td>
-                <td class="d-flex flex-wrap gap-2">
-                  <button cButton color="secondary" size="sm" type="button" (click)="openFile(d.id)">Archivo</button>
-                  <button cButton color="secondary" size="sm" type="button" (click)="openHtml(d.id)">HTML</button>
-                  <button cButton color="info" size="sm" type="button" (click)="saveTitle(d)" [disabled]="actingId === d.id">Guardar título</button>
+                <td class="align-middle small text-body-secondary">{{ formatDate(d.created_at) }}</td>
+                <td class="align-middle">
+                  <span *ngIf="d.signed" class="badge bg-success">Firmado</span>
+                  <span *ngIf="!d.signed" class="badge bg-warning text-dark">Por firmar</span>
+                </td>
+                <td class="d-flex flex-wrap gap-2 align-middle">
+                  <button cButton color="secondary" size="sm" type="button" (click)="openFile(d.id)">Abrir</button>
+                  <button cButton color="secondary" size="sm" type="button" (click)="openHtml(d.id)">Previsualizar</button>
+                  <button *ngIf="!d.signed" cButton color="warning" size="sm" type="button" (click)="openSign(d)">Firmar</button>
+                  <button cButton color="info" size="sm" type="button" (click)="saveTitle(d)" [disabled]="actingId === d.id">Guardar</button>
                   <button cButton color="warning" size="sm" type="button" (click)="replace(d)" [disabled]="actingId === d.id">Reemplazar</button>
                   <button cButton color="danger" size="sm" type="button" (click)="delete(d.id)" [disabled]="actingId === d.id">Eliminar</button>
 
-                  @if (rowStatusById[d.id]) {
-                    <span class="small text-body-secondary align-self-center">{{ rowStatusById[d.id] }}</span>
-                  }
+                  <span *ngIf="rowStatusById[d.id]" class="small text-body-secondary align-self-center">{{ rowStatusById[d.id] }}</span>
                 </td>
               </tr>
-            } @empty {
-              <tr>
+            <tr *ngIf="!items || items.length === 0">
                 <td colspan="7" class="text-center text-body-secondary">Sin datos</td>
-              </tr>
-            }
+            </tr>
           </tbody>
         </table>
+
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
+          <div class="small text-body-secondary">Página {{ page }} de {{ pageCount }}</div>
+          <div class="d-flex gap-2">
+            <button cButton color="secondary" size="sm" type="button" (click)="prevPage()" [disabled]="isLoading || page <= 1">Anterior</button>
+            <button cButton color="secondary" size="sm" type="button" (click)="nextPage()" [disabled]="isLoading || page >= pageCount">Siguiente</button>
+          </div>
+        </div>
       </c-card-body>
     </c-card>
   </c-col>

@@ -17,7 +17,7 @@ export const authGuardFn: CanActivateFn = () => {
   return router.parseUrl('/login');
 };
 
-export const authChildGuardFn: CanActivateChildFn = (route) => {
+export const authChildGuardFn: CanActivateChildFn = (_route, state) => {
   const router = inject(Router);
   const auth = inject(AuthService);
   const tokenStorage = inject(TokenStorageService);
@@ -26,19 +26,17 @@ export const authChildGuardFn: CanActivateChildFn = (route) => {
     return router.parseUrl('/login');
   }
 
-  const fullPath = route.pathFromRoot
-    .map(r => r.url.map(s => s.path).join('/'))
-    .join('/')
-    .replace(/\/+/g, '/');
+  // Use state.url to get the full destination URL, not just the current segment
+  const targetUrl = state.url.split('?')[0].replace(/\/+/g, '/');
 
-  // Solo redirigir pacientes desde la raíz del CRM
-  if (fullPath === '/crm' || fullPath === '/crm/' || fullPath === '' || fullPath === 'crm') {
+  // Solo redirigir pacientes desde la raíz del CRM (no desde subrutas como /welcome)
+  if (targetUrl === '/' || targetUrl === '') {
     const tokenRole = tokenStorage.getTokenRole();
     const normalizedRole = tokenRole?.toLowerCase();
 
     // Detectar paciente aunque sea PACIENTE o patient
     if (normalizedRole && ['patient', 'paciente'].includes(normalizedRole)) {
-      return router.parseUrl('/crm/welcome');
+      return router.parseUrl('/welcome');
     }
 
     // Si el rol no está en el token, consultar /me
@@ -48,7 +46,7 @@ export const authChildGuardFn: CanActivateChildFn = (route) => {
         map(res => {
           const role = res?.user?.role?.toLowerCase();
           if (role && ['patient', 'paciente'].includes(role)) {
-            return router.parseUrl('/crm/welcome');
+            return router.parseUrl('/welcome');
           }
           return true;
         }),

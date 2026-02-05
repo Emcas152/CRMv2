@@ -1,4 +1,5 @@
 import { Component, OnInit, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 
@@ -23,6 +24,7 @@ import { CreateUserRequest, UpdateUserRequest, User, UsersListQuery, UsersServic
   templateUrl: './users-page.component.html',
   standalone: true,
   imports: [
+    CommonModule,
     ReactiveFormsModule,
     RowComponent,
     ColComponent,

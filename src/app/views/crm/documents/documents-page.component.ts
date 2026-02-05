@@ -1,6 +1,10 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, ElementRef, OnInit, ViewChild, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
+
+import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
+import { PDFDocument } from 'pdf-lib';
 
 import {
   AlertComponent,
@@ -24,6 +28,7 @@ import { Id } from '../../../core/services/api.models';
   templateUrl: './documents-page.component.html',
   standalone: true,
   imports: [
+    CommonModule,
     ReactiveFormsModule,
     RowComponent,
     ColComponent,
@@ -51,6 +56,31 @@ export class DocumentsPageComponent implements OnInit {
   selectedFile: File | null = null;
   signFile: File | null = null;
 
+  showUpload = false;
+  showSign = false;
+  signTarget: DocumentItem | null = null;
+
+  @ViewChild('signCanvas') signCanvasRef?: ElementRef<HTMLCanvasElement>;
+
+  signLoading = false;
+  signApplying = false;
+  signDocMime: string | null = null;
+  signDocBytes: Uint8Array | null = null;
+  signatureSelectedFile: File | null = null;
+  signatureImg: HTMLImageElement | null = null;
+  signatureScale = 1;
+
+  #baseCanvas: HTMLCanvasElement | null = null;
+  #isDraggingSig = false;
+  #dragOffsetX = 0;
+  #dragOffsetY = 0;
+  #sigX = 0;
+  #sigY = 0;
+  #sigW = 220;
+  #sigH = 90;
+  #sigBaseW = 220;
+  #sigBaseH = 90;
+
   actingId: Id | null = null;
   rowStatusById: Partial<Record<string, string>> = {};
   replaceFileById: Partial<Record<string, File>> = {};
@@ -71,6 +101,174 @@ export class DocumentsPageComponent implements OnInit {
 
   ngOnInit(): void {
     // Intencional: requiere patientId
+    // Configure PDF.js worker (resolved by bundler)
+    GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
+  }
+
+  get page(): number {
+    return Number(this.form.controls.page.value) || 1;
+  }
+
+  get perPage(): number {
+    return Number(this.form.controls.per_page.value) || 20;
+  }
+
+  get pageCount(): number {
+    const per = this.perPage;
+    if (!per) return 1;
+    return Math.max(1, Math.ceil((this.total || 0) / per));
+  }
+
+  toggleUpload(): void {
+    this.showUpload = !this.showUpload;
+  }
+
+  openSign(d: DocumentItem): void {
+    this.showSign = true;
+    this.signTarget = d;
+    this.signForm.controls.documentId.setValue(Number(d.id));
+    this.signatureSelectedFile = null;
+    this.signatureImg = null;
+    this.signatureScale = 1;
+    this.signDocBytes = null;
+    this.signDocMime = null;
+    this.#baseCanvas = null;
+    this.signLoading = true;
+    this.error = null;
+
+    // Render async (after panel shows and canvas exists)
+    void this.#loadAndRenderSignDoc(d);
+  }
+
+  cancelSign(): void {
+    this.showSign = false;
+    this.signTarget = null;
+    this.signFile = null;
+    this.signForm.reset({ documentId: 0, method: '', meta: '' });
+    this.signatureSelectedFile = null;
+    this.signatureImg = null;
+    this.signDocBytes = null;
+    this.signDocMime = null;
+    this.#baseCanvas = null;
+    this.signLoading = false;
+    this.signApplying = false;
+  }
+
+  onSignatureFileChange(evt: Event): void {
+    const input = evt.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    input.value = '';
+    this.signatureSelectedFile = file;
+    void this.#loadSignatureImage(file);
+  }
+
+  onSignatureScaleChange(evt: Event): void {
+    const input = evt.target as HTMLInputElement;
+    const v = Number(input.value);
+    if (!isFinite(v) || v <= 0) return;
+    this.signatureScale = v;
+    this.#applySignatureScale();
+    this.#redrawSignCanvas();
+  }
+
+  resetSignaturePosition(): void {
+    const canvas = this.signCanvasRef?.nativeElement;
+    if (!canvas) return;
+    this.#sigX = Math.max(12, canvas.width - this.#sigW - 12);
+    this.#sigY = Math.max(12, canvas.height - this.#sigH - 12);
+    this.#redrawSignCanvas();
+  }
+
+  onSignPointerDown(evt: PointerEvent): void {
+    const canvas = this.signCanvasRef?.nativeElement;
+    if (!canvas || !this.signatureImg) return;
+    const p = this.#canvasPoint(canvas, evt);
+    if (!this.#hitSig(p.x, p.y)) return;
+    this.#isDraggingSig = true;
+    this.#dragOffsetX = p.x - this.#sigX;
+    this.#dragOffsetY = p.y - this.#sigY;
+    canvas.setPointerCapture(evt.pointerId);
+  }
+
+  onSignPointerMove(evt: PointerEvent): void {
+    if (!this.#isDraggingSig) return;
+    const canvas = this.signCanvasRef?.nativeElement;
+    if (!canvas) return;
+    const p = this.#canvasPoint(canvas, evt);
+    this.#sigX = p.x - this.#dragOffsetX;
+    this.#sigY = p.y - this.#dragOffsetY;
+    this.#clampSig(canvas);
+    this.#redrawSignCanvas();
+  }
+
+  onSignPointerUp(evt: PointerEvent): void {
+    const canvas = this.signCanvasRef?.nativeElement;
+    if (!canvas) return;
+    this.#isDraggingSig = false;
+    try {
+      canvas.releasePointerCapture(evt.pointerId);
+    } catch {
+      // ignore
+    }
+  }
+
+  async applyCanvasSignature(): Promise<void> {
+    this.error = null;
+    this.actionInfo = null;
+    if (this.signApplying) return;
+    if (!this.signTarget) return;
+    if (!this.signDocBytes || !this.signDocMime) {
+      this.error = 'No se pudo cargar el documento para firmar.';
+      return;
+    }
+    if (!this.signatureImg) {
+      this.error = 'Selecciona una firma (imagen) para colocarla.';
+      return;
+    }
+    const canvas = this.signCanvasRef?.nativeElement;
+    if (!canvas || !this.#baseCanvas) {
+      this.error = 'No se pudo preparar el canvas de firma.';
+      return;
+    }
+
+    this.signApplying = true;
+    try {
+      const raw = this.signForm.getRawValue();
+      const method = raw.method.trim() || undefined;
+      const meta = raw.meta.trim() || undefined;
+
+      const signedFile = await this.#buildSignedFile(this.signTarget, canvas);
+      const newDoc = await firstValueFrom(this.#docs.upload(signedFile, this.signTarget.patient_id, this.signTarget.title ?? undefined));
+
+      const positionMeta = `canvas_sig={x:${Math.round(this.#sigX)},y:${Math.round(this.#sigY)},w:${Math.round(this.#sigW)},h:${Math.round(this.#sigH)},cw:${canvas.width},ch:${canvas.height}}`;
+      await firstValueFrom(
+        this.#docs.sign(newDoc.id, {
+          method,
+          meta: [meta, positionMeta].filter(Boolean).join(' | ')
+        })
+      );
+
+      await firstValueFrom(this.#docs.delete(this.signTarget.id));
+      this.actionInfo = 'Documento firmado y reemplazado.';
+      this.cancelSign();
+      await this.refresh();
+    } catch (err: any) {
+      this.error = this.#formatError(err);
+    } finally {
+      this.signApplying = false;
+    }
+  }
+
+  async prevPage(): Promise<void> {
+    if (this.page <= 1) return;
+    this.form.controls.page.setValue(this.page - 1);
+    await this.refresh();
+  }
+
+  async nextPage(): Promise<void> {
+    if (this.page >= this.pageCount) return;
+    this.form.controls.page.setValue(this.page + 1);
+    await this.refresh();
   }
 
   onFileChange(evt: Event): void {
@@ -92,8 +290,8 @@ export class DocumentsPageComponent implements OnInit {
     this.isLoading = true;
     try {
       const patientId = Number(this.form.controls.patientId.value) as Id;
-      const page = Number(this.form.controls.page.value) || 1;
-      const per_page = Number(this.form.controls.per_page.value) || 20;
+      const page = this.page;
+      const per_page = this.perPage;
       const res = await firstValueFrom(this.#docs.list(patientId, { page, per_page }));
       this.total = res.total;
       this.items = res.data;
@@ -126,6 +324,7 @@ export class DocumentsPageComponent implements OnInit {
       const title = this.form.controls.title.value?.trim() || undefined;
       await firstValueFrom(this.#docs.upload(this.selectedFile, patientId, title));
       this.selectedFile = null;
+      this.showUpload = false;
       await this.refresh();
     } catch (err: any) {
       this.error = this.#formatError(err);
@@ -234,12 +433,236 @@ export class DocumentsPageComponent implements OnInit {
         })
       );
       this.actionInfo = 'Documento firmado.';
+      this.cancelSign();
       await this.refresh();
     } catch (err: any) {
       this.error = this.#formatError(err);
     } finally {
       this.isUploading = false;
     }
+  }
+
+  async #loadAndRenderSignDoc(d: DocumentItem): Promise<void> {
+    try {
+      const blob = await firstValueFrom(this.#docs.file(d.id));
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      const mime = blob.type || d.mime || d.mime_type || '';
+      this.signDocBytes = bytes;
+      this.signDocMime = mime;
+
+      await this.#waitForCanvas();
+      await this.#renderDocument(bytes, mime);
+    } catch (err: any) {
+      this.error = this.#formatError(err);
+    } finally {
+      this.signLoading = false;
+    }
+  }
+
+  async #waitForCanvas(): Promise<void> {
+    for (let i = 0; i < 30; i++) {
+      if (this.signCanvasRef?.nativeElement) return;
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    }
+    throw new Error('Canvas no disponible');
+  }
+
+  async #renderDocument(bytes: Uint8Array, mime: string): Promise<void> {
+    const canvas = this.signCanvasRef?.nativeElement;
+    if (!canvas) throw new Error('Canvas no disponible');
+
+    const isPdf = /pdf/i.test(mime) || (mime === '' && this.signTarget?.original_filename?.toLowerCase().endsWith('.pdf'));
+
+    if (isPdf) {
+      const pdf = await getDocument({ data: bytes }).promise;
+      const page = await pdf.getPage(1);
+      const unscaled = page.getViewport({ scale: 1 });
+      const maxW = 980;
+      const scale = Math.min(2, maxW / unscaled.width);
+      const viewport = page.getViewport({ scale });
+
+      canvas.width = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('No hay contexto 2D');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+
+      this.#baseCanvas = document.createElement('canvas');
+      this.#baseCanvas.width = canvas.width;
+      this.#baseCanvas.height = canvas.height;
+      const bctx = this.#baseCanvas.getContext('2d');
+      if (!bctx) throw new Error('No hay contexto 2D');
+      bctx.drawImage(canvas, 0, 0);
+      this.#redrawSignCanvas();
+      return;
+    }
+
+    // Image fallback
+    const blob = new Blob([this.#u8ToArrayBuffer(bytes)], { type: mime || 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = await this.#loadImg(url);
+      const maxW = 980;
+      const scale = Math.min(1, maxW / img.naturalWidth);
+      canvas.width = Math.floor(img.naturalWidth * scale);
+      canvas.height = Math.floor(img.naturalHeight * scale);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('No hay contexto 2D');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      this.#baseCanvas = document.createElement('canvas');
+      this.#baseCanvas.width = canvas.width;
+      this.#baseCanvas.height = canvas.height;
+      const bctx = this.#baseCanvas.getContext('2d');
+      if (!bctx) throw new Error('No hay contexto 2D');
+      bctx.drawImage(canvas, 0, 0);
+      this.#redrawSignCanvas();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  async #loadSignatureImage(file: File | null): Promise<void> {
+    if (!file) {
+      this.signatureImg = null;
+      this.#redrawSignCanvas();
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await this.#loadImg(url);
+      this.signatureImg = img;
+      this.#initSigSize(img);
+      this.resetSignaturePosition();
+      this.#redrawSignCanvas();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  #initSigSize(img: HTMLImageElement): void {
+    const canvas = this.signCanvasRef?.nativeElement;
+    if (!canvas) return;
+    const baseW = Math.min(260, Math.floor(canvas.width * 0.28));
+    const ratio = img.naturalHeight / Math.max(1, img.naturalWidth);
+    this.#sigBaseW = baseW;
+    this.#sigBaseH = Math.max(40, Math.floor(baseW * ratio));
+    this.#sigW = this.#sigBaseW;
+    this.#sigH = this.#sigBaseH;
+    this.#applySignatureScale();
+  }
+
+  #applySignatureScale(): void {
+    const s = Math.max(0.5, Math.min(2.5, this.signatureScale || 1));
+    this.signatureScale = s;
+    this.#sigW = Math.max(24, Math.round(this.#sigBaseW * s));
+    this.#sigH = Math.max(24, Math.round(this.#sigBaseH * s));
+  }
+
+  #redrawSignCanvas(): void {
+    const canvas = this.signCanvasRef?.nativeElement;
+    const base = this.#baseCanvas;
+    if (!canvas || !base) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(base, 0, 0);
+    if (this.signatureImg) {
+      this.#clampSig(canvas);
+      ctx.drawImage(this.signatureImg, this.#sigX, this.#sigY, this.#sigW, this.#sigH);
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(this.#sigX, this.#sigY, this.#sigW, this.#sigH);
+    }
+  }
+
+  #hitSig(x: number, y: number): boolean {
+    return x >= this.#sigX && x <= this.#sigX + this.#sigW && y >= this.#sigY && y <= this.#sigY + this.#sigH;
+  }
+
+  #clampSig(canvas: HTMLCanvasElement): void {
+    this.#sigX = Math.max(0, Math.min(this.#sigX, canvas.width - this.#sigW));
+    this.#sigY = Math.max(0, Math.min(this.#sigY, canvas.height - this.#sigH));
+  }
+
+  #canvasPoint(canvas: HTMLCanvasElement, evt: PointerEvent): { x: number; y: number } {
+    const rect = canvas.getBoundingClientRect();
+    const x = ((evt.clientX - rect.left) / rect.width) * canvas.width;
+    const y = ((evt.clientY - rect.top) / rect.height) * canvas.height;
+    return { x, y };
+  }
+
+  async #buildSignedFile(target: DocumentItem, canvas: HTMLCanvasElement): Promise<File> {
+    const mime = this.signDocMime || '';
+    const isPdf = /pdf/i.test(mime) || (mime === '' && (target.original_filename ?? '').toLowerCase().endsWith('.pdf'));
+
+    const sigPngBytes = await this.#signaturePngBytes();
+
+    if (isPdf) {
+      const pdfDoc = await PDFDocument.load(this.signDocBytes as Uint8Array);
+      const pages = pdfDoc.getPages();
+      if (!pages.length) throw new Error('PDF vacío');
+      const page = pages[0];
+      const { width: pageW, height: pageH } = page.getSize();
+      const png = await pdfDoc.embedPng(sigPngBytes);
+
+      const scaleX = pageW / canvas.width;
+      const scaleY = pageH / canvas.height;
+      const x = this.#sigX * scaleX;
+      const y = pageH - (this.#sigY + this.#sigH) * scaleY;
+      const w = this.#sigW * scaleX;
+      const h = this.#sigH * scaleY;
+      page.drawImage(png, { x, y, width: w, height: h, opacity: 1 });
+
+      const signedBytes = await pdfDoc.save();
+      const name = this.#makeSignedName(target, 'pdf');
+      return new File([this.#u8ToArrayBuffer(signedBytes)], name, { type: 'application/pdf' });
+    }
+
+    // image: composite from the visible canvas (which already has base+signature)
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('No se pudo exportar imagen'))), 'image/png');
+    });
+    const name = this.#makeSignedName(target, 'png');
+    return new File([blob], name, { type: 'image/png' });
+  }
+
+  async #signaturePngBytes(): Promise<Uint8Array> {
+    // Prefer the uploaded signature file bytes if present; otherwise, rasterize current signature image
+    if (this.signatureSelectedFile) {
+      const arr = new Uint8Array(await this.signatureSelectedFile.arrayBuffer());
+      // If already PNG, use as-is. Otherwise convert to PNG via canvas.
+      if (/png/i.test(this.signatureSelectedFile.type)) return arr;
+    }
+
+    if (!this.signatureImg) throw new Error('Firma no cargada');
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, this.signatureImg.naturalWidth);
+    c.height = Math.max(1, this.signatureImg.naturalHeight);
+    const ctx = c.getContext('2d');
+    if (!ctx) throw new Error('No hay contexto 2D');
+    ctx.drawImage(this.signatureImg, 0, 0);
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      c.toBlob((b) => (b ? resolve(b) : reject(new Error('No se pudo exportar firma'))), 'image/png');
+    });
+    return new Uint8Array(await blob.arrayBuffer());
+  }
+
+  #makeSignedName(target: DocumentItem, ext: string): string {
+    const base = (target.original_filename ?? target.filename ?? `documento-${target.id}`).replace(/\.[^.]+$/, '');
+    return `${base}-firmado.${ext}`;
+  }
+
+  #loadImg(url: string): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('No se pudo cargar la imagen'));
+      img.src = url;
+    });
   }
 
   async openFile(id: Id): Promise<void> {
@@ -280,6 +703,27 @@ export class DocumentsPageComponent implements OnInit {
     }
   }
 
+  // Helpers for template
+  isImage(d: DocumentItem): boolean {
+    const m = d.mime ?? d.mime_type ?? '';
+    return /^image\//i.test(m);
+  }
+
+  previewUrl(d: DocumentItem): string | null {
+    return (d.file_url ?? d.view_url ?? d.download_url ?? d.url) || null;
+  }
+
+  formatDate(iso?: string): string {
+    if (!iso) return '-';
+    const dt = new Date(iso);
+    if (isNaN(dt.getTime())) return iso;
+    return dt.toLocaleString();
+  }
+
+  trackById(_index: number, item: DocumentItem): Id {
+    return item.id;
+  }
+
   #formatError(err: any): string {
     const message = err?.error?.message ?? err?.message;
     if (typeof message === 'string' && message.trim().length) return message;
@@ -288,5 +732,11 @@ export class DocumentsPageComponent implements OnInit {
 
   #isAbsoluteUrl(url: string): boolean {
     return /^https?:\/\//i.test(url);
+  }
+
+  #u8ToArrayBuffer(u8: Uint8Array): ArrayBuffer {
+    const copy = new Uint8Array(u8.byteLength);
+    copy.set(u8);
+    return copy.buffer;
   }
 }

@@ -171,12 +171,15 @@ export class SalesPageComponent implements OnInit, OnDestroy {
       const pid = Number(patient?.id ?? 0) || 0;
       if (pid > 0) {
         this.form.controls.patient_id.setValue(pid as any);
+        this.currentPatient = patient as Patient;
         try {
           const p = await firstValueFrom(this.#patients.get(pid as Id));
           this.currentPatient = p as Patient;
         } catch {
-          this.currentPatient = null;
+          // keep best-effort data returned by QR scan
         }
+      } else {
+        this.currentPatient = null;
       }
     } catch (err: any) {
       this.submitError = this.#formatError(err);
@@ -264,12 +267,12 @@ export class SalesPageComponent implements OnInit, OnDestroy {
         payment_method: this.form.controls.payment_method.value,
         discount: Number(this.form.controls.discount.value) || 0,
         notes: this.form.controls.notes.value || undefined,
-        loyalty_points: Number(this.form.controls.loyalty_points.value) || 0,
         items
       };
-      await firstValueFrom(this.#sales.create(payload));
+      const created = await firstValueFrom(this.#sales.create(payload));
       this.cart = [];
-      this.actionInfo = 'Compra completada.';
+      const awarded = Number((created as any)?.loyalty_points_awarded) || 0;
+      this.actionInfo = awarded > 0 ? `Compra completada. Puntos acumulados: ${awarded}` : 'Compra completada.';
       await this.refresh();
     } catch (err: any) {
       this.submitError = this.#formatError(err);
@@ -358,11 +361,10 @@ export class SalesPageComponent implements OnInit, OnDestroy {
           payment_method: raw.payment_method,
           discount: Number(raw.discount) || 0,
           notes: raw.notes.trim() || undefined,
-          loyalty_points: Number((raw as any).loyalty_points) || 0,
           items
         };
         const created = await firstValueFrom(this.#sales.create(payload));
-        const awarded = Number((created as any)?.loyalty_points_awarded) || Number((raw as any).loyalty_points) || 0;
+        const awarded = Number((created as any)?.loyalty_points_awarded) || 0;
         if (awarded > 0) this.actionInfo = `Puntos acumulados: ${awarded}`;
 
         this.startCreate();

@@ -72,7 +72,8 @@ try {
     try {
         require_once __DIR__ . '/../../core/Mailer.php';
         $mailer = new Mailer();
-        $verifyUrl = rtrim($config['app_url'], '/') . '/crm/backend/public/verify-email?token=' . urlencode($verificationToken);
+        // Use the normalized public endpoint for email verification
+        $verifyUrl = rtrim($config['app_url'], '/') . '/verify-email?token=' . urlencode($verificationToken);
         $subject = 'Verifica tu correo - ' . ($config['app_name'] ?? 'CRM');
         $body = "<p>Hola " . htmlspecialchars($input['name']) . ",</p>" .
                 "<p>Gracias por registrarte. Por favor confirma tu correo haciendo clic en el siguiente enlace:</p>" .

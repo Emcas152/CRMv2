@@ -11,6 +11,7 @@ class ProfileController
         require_once __DIR__ . '/../Core/Request.php';
         require_once __DIR__ . '/../Core/Database.php';
         require_once __DIR__ . '/../Core/Auth.php';
+        require_once __DIR__ . '/../Core/Settings.php';
         require_once __DIR__ . '/../Core/Validator.php';
         require_once __DIR__ . '/../Core/Response.php';
         require_once __DIR__ . '/../Core/Audit.php';
@@ -78,6 +79,12 @@ class ProfileController
             }
         }
 
+        if (in_array($userData['role'], ['admin', 'superadmin'], true)) {
+            $response['loyalty'] = [
+                'points_per_item' => \App\Core\Settings::getInt('loyalty_points_per_item', 0),
+            ];
+        }
+
         \App\Core\Response::success($response);
     }
 
@@ -88,6 +95,7 @@ class ProfileController
         $validator = \App\Core\Validator::make($input, [
             'name' => 'string|max:255',
             'email' => 'email|max:255',
+            'loyalty_points_per_item' => 'integer|min:0|max:1000000',
         ]);
 
         try {
@@ -103,24 +111,25 @@ class ProfileController
             }
         }
 
-        $updates = [];
-        $params = [];
-        foreach (['name', 'email'] as $field) {
-            if (isset($input[$field])) {
-                $updates[] = $field . ' = ?';
-                $params[] = $input[$field];
-            }
-        }
-
-        if (empty($updates)) {
-            \App\Core\Response::error('No hay datos para actualizar', 400);
-        }
-
-        $updates[] = 'updated_at = NOW()';
-        $params[] = $user['user_id'];
-
         try {
-            $db->execute('UPDATE users SET ' . implode(', ', $updates) . ' WHERE id = ?', $params);
+            $didUserUpdate = false;
+            $didSettingsUpdate = false;
+
+            $updates = [];
+            $params = [];
+            foreach (['name', 'email'] as $field) {
+                if (isset($input[$field])) {
+                    $updates[] = $field . ' = ?';
+                    $params[] = $input[$field];
+                }
+            }
+
+            if (!empty($updates)) {
+                $updates[] = 'updated_at = NOW()';
+                $params[] = $user['user_id'];
+                $db->execute('UPDATE users SET ' . implode(', ', $updates) . ' WHERE id = ?', $params);
+                $didUserUpdate = true;
+            }
 
             $currentUser = $db->fetchOne('SELECT role FROM users WHERE id = ?', [$user['user_id']]);
             if (($currentUser['role'] ?? null) === 'patient') {
@@ -139,6 +148,25 @@ class ProfileController
                 }
             }
 
+            if (array_key_exists('loyalty_points_per_item', $input)) {
+                $role = (string)($currentUser['role'] ?? '');
+                if (!in_array($role, ['admin', 'superadmin'], true)) {
+                    \App\Core\Response::forbidden('No tienes permisos para configurar puntos');
+                }
+
+                $pointsPerItem = intval($input['loyalty_points_per_item'] ?? 0);
+                if ($pointsPerItem < 0) {
+                    \App\Core\Response::validationError(['loyalty_points_per_item' => 'Debe ser >= 0']);
+                }
+
+                \App\Core\Settings::setInt('loyalty_points_per_item', $pointsPerItem);
+                $didSettingsUpdate = true;
+            }
+
+            if (!$didUserUpdate && !$didSettingsUpdate) {
+                \App\Core\Response::error('No hay datos para actualizar', 400);
+            }
+
             if (class_exists('\\App\\Core\\Audit')) {
                 \App\Core\Audit::log('update_profile', 'user', $user['user_id'], ['updates' => array_keys($input)]);
             }
@@ -147,7 +175,15 @@ class ProfileController
                 'SELECT id, name, email, role, created_at FROM users WHERE id = ?',
                 [$user['user_id']]
             );
-            \App\Core\Response::success(['user' => $userData], 'Perfil actualizado');
+
+            $resp = ['user' => $userData];
+            if (in_array($userData['role'], ['admin', 'superadmin'], true)) {
+                $resp['loyalty'] = [
+                    'points_per_item' => \App\Core\Settings::getInt('loyalty_points_per_item', 0),
+                ];
+            }
+
+            \App\Core\Response::success($resp, 'Perfil actualizado');
         } catch (\Exception $e) {
             \App\Core\Response::dbException('Error al actualizar perfil', $e);
         }

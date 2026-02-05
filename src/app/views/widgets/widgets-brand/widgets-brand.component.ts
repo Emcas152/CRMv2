@@ -1,4 +1,5 @@
 import { AfterContentInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, input } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { ChartjsComponent } from '@coreui/angular-chartjs';
 import { IconDirective } from '@coreui/icons-angular';
 import { ColComponent, RowComponent, WidgetStatDComponent } from '@coreui/angular';
@@ -17,7 +18,7 @@ type BrandData = {
   selector: 'app-widgets-brand',
   templateUrl: './widgets-brand.component.html',
   changeDetection: ChangeDetectionStrategy.Default,
-  imports: [RowComponent, ColComponent, WidgetStatDComponent, IconDirective, ChartjsComponent]
+  imports: [CommonModule, RowComponent, ColComponent, WidgetStatDComponent, IconDirective, ChartjsComponent]
 })
 export class WidgetsBrandComponent implements AfterContentInit {
   private changeDetectorRef = inject(ChangeDetectorRef);

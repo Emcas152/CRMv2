@@ -11,6 +11,7 @@ class SalesController
         require_once __DIR__ . '/../Core/Request.php';
         require_once __DIR__ . '/../Core/Database.php';
         require_once __DIR__ . '/../Core/Auth.php';
+        require_once __DIR__ . '/../Core/Settings.php';
         require_once __DIR__ . '/../Core/Validator.php';
         require_once __DIR__ . '/../Core/Response.php';
         require_once __DIR__ . '/../Core/Audit.php';
@@ -252,6 +253,7 @@ class SalesController
             }
 
             $subtotal = 0;
+            $totalQuantity = 0;
             foreach ($input['items'] as $item) {
                 $productId = $item['product_id'] ?? null;
                 $price = $item['price'] ?? null;
@@ -261,7 +263,9 @@ class SalesController
                     throw new \Exception('Item inválido: se requiere product_id, price, quantity');
                 }
 
-                $subtotal += floatval($price) * intval($quantity);
+                $qtyInt = intval($quantity);
+                $subtotal += floatval($price) * $qtyInt;
+                $totalQuantity += max(0, $qtyInt);
 
                 $product = $db->fetchOne('SELECT id, name, type, stock FROM products WHERE id = ?', [$productId]);
                 if (!$product) {
@@ -281,7 +285,12 @@ class SalesController
                 throw new \Exception('El descuento no puede ser mayor al subtotal');
             }
 
-            $points = intval($input['loyalty_points'] ?? 0);
+            // Loyalty points are auto-awarded per item (configured by admin/superadmin in Profile).
+            $pointsPerItem = \App\Core\Settings::getInt('loyalty_points_per_item', 0);
+            $points = max(0, $totalQuantity) * max(0, $pointsPerItem);
+            if ($points > 1000000) {
+                $points = 1000000;
+            }
 
             $db->execute(
                 'INSERT INTO sales (patient_id, created_by, subtotal, discount, total, loyalty_points_awarded, payment_method, status, notes, created_at, updated_at)

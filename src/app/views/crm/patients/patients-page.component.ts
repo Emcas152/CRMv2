@@ -25,6 +25,7 @@ import {
   UpdatePatientRequest
 } from '../../../core/services/patients.service';
 import { Id } from '../../../core/services/api.models';
+import * as QRCode from 'qrcode';
 
 @Component({
   selector: 'app-crm-patients-page',
@@ -51,6 +52,10 @@ import { Id } from '../../../core/services/api.models';
 export class PatientsPageComponent implements OnInit {
   readonly #patients = inject(PatientsService);
   readonly #fb = inject(FormBuilder);
+
+  readonly qrSize = 280;
+  qrCodeText: string | null = null;
+  qrDataUrl: string | null = null;
 
   isLoading = false;
   error: string | null = null;
@@ -213,12 +218,18 @@ export class PatientsPageComponent implements OnInit {
   async showQr(p: Patient): Promise<void> {
     this.actionError = null;
     this.actionInfo = null;
+    this.qrCodeText = null;
+    this.qrDataUrl = null;
     if (this.actingId !== null) return;
     this.actingId = p.id;
     this.rowStatusById[String(p.id)] = 'Loading QR…';
     try {
       const res = await firstValueFrom(this.#patients.getQr(p.id));
       this.qrResult = { patient_id: p.id, ...res };
+      this.qrCodeText = res?.qr_code ?? null;
+      if (this.qrCodeText) {
+        this.qrDataUrl = await QRCode.toDataURL(this.qrCodeText, { margin: 1, width: this.qrSize });
+      }
     } catch (err: any) {
       this.actionError = this.#formatError(err);
     } finally {
@@ -227,6 +238,42 @@ export class PatientsPageComponent implements OnInit {
         delete this.rowStatusById[String(p.id)];
       }, 2500);
     }
+  }
+
+  copyQrCode(): void {
+    if (!this.qrCodeText) return;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        void navigator.clipboard.writeText(this.qrCodeText).then(
+          () => (this.actionInfo = 'Código QR copiado.'),
+          () => (this.actionError = 'No se pudo copiar el código.')
+        );
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = this.qrCodeText;
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand('copy');
+          this.actionInfo = 'Código QR copiado.';
+        } catch {
+          this.actionError = 'No se pudo copiar el código.';
+        }
+        document.body.removeChild(ta);
+      }
+    } catch {
+      this.actionError = 'No se pudo copiar el código.';
+    }
+  }
+
+  downloadQr(): void {
+    if (!this.qrDataUrl) return;
+    const a = document.createElement('a');
+    a.href = this.qrDataUrl;
+    a.download = `paciente-${this.qrResult?.patient_id ?? 'qr'}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
 
   async loyaltyAdd(p: Patient): Promise<void> {

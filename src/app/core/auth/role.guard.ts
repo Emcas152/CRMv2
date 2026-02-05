@@ -19,7 +19,7 @@ export function requireRoles(roles: string[]): CanMatchFn {
     const tokenStorage = inject(TokenStorageService);
 
     const deniedTree = (): UrlTree =>
-      router.createUrlTree(['/crm'], { queryParams: { denied: roles.join(',') } });
+      router.createUrlTree(['/'], { queryParams: { denied: roles.join(',') } });
 
     const loginTree = (): UrlTree =>
       router.createUrlTree(['/login']);

@@ -60,6 +60,8 @@ export class ProfilePageComponent implements OnInit {
 
   selectedPhoto: File | null = null;
 
+  isSavingLoyalty = false;
+
   showEdit = false;
   // slide-over panel state for Option C
   slideOpen = false;
@@ -72,6 +74,10 @@ export class ProfilePageComponent implements OnInit {
   // additional small reactive group for phone to keep primary form minimal
   readonly updateFormPhone = this.#fb.nonNullable.group({
     phone: ['']
+  });
+
+  readonly loyaltyConfigForm = this.#fb.nonNullable.group({
+    points_per_item: [0, [Validators.required, Validators.min(0), Validators.max(1000000)]]
   });
 
   readonly passwordForm = this.#fb.nonNullable.group({
@@ -118,6 +124,12 @@ export class ProfilePageComponent implements OnInit {
       this.updateForm.reset({ name, email });
       this.updateFormPhone.reset({ phone });
 
+      if (this.isAdminOrSuperAdmin) {
+        this.loyaltyConfigForm.reset({
+          points_per_item: Number((this.profile as any)?.loyalty?.points_per_item ?? 0) || 0
+        });
+      }
+
       await this.refreshQr();
     } catch (err: any) {
       this.error = this.#formatError(err);
@@ -130,8 +142,13 @@ export class ProfilePageComponent implements OnInit {
     return Number((this.profile as any)?.patient?.id ?? 0) > 0;
   }
 
+  get isAdminOrSuperAdmin(): boolean {
+    const role = String((this.profile as any)?.user?.role ?? '');
+    return role === 'admin' || role === 'superadmin';
+  }
+
   get qrTitle(): string {
-    return this.hasPatient ? 'Mi QR ' : 'Mi QR';
+    return this.hasPatient ? 'QR para acumular puntos' : 'Mi QR';
   }
 
   async refreshQr(): Promise<void> {
@@ -259,6 +276,70 @@ export class ProfilePageComponent implements OnInit {
     } finally {
       this.isSaving = false;
     }
+  }
+
+  async saveLoyaltyConfig(): Promise<void> {
+    if (!this.isAdminOrSuperAdmin) return;
+    if (this.isSavingLoyalty) return;
+
+    this.error = null;
+    this.info = null;
+
+    this.loyaltyConfigForm.markAllAsTouched();
+    if (this.loyaltyConfigForm.invalid) return;
+
+    this.isSavingLoyalty = true;
+    try {
+      const raw = this.loyaltyConfigForm.getRawValue();
+      await firstValueFrom(
+        this.#profile.update({
+          loyalty_points_per_item: Number(raw.points_per_item) || 0
+        } as any)
+      );
+      this.info = 'Configuración de puntos actualizada.';
+      await this.refresh();
+    } catch (err: any) {
+      this.error = this.#formatError(err);
+    } finally {
+      this.isSavingLoyalty = false;
+    }
+  }
+
+  copyQrCode(): void {
+    if (!this.qrCodeText) return;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        void navigator.clipboard.writeText(this.qrCodeText).then(() => {
+          this.info = 'Código QR copiado.';
+        }, () => {
+          this.error = 'No se pudo copiar el código.';
+        });
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = this.qrCodeText;
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand('copy');
+          this.info = 'Código QR copiado.';
+        } catch {
+          this.error = 'No se pudo copiar el código.';
+        }
+        document.body.removeChild(ta);
+      }
+    } catch (err: any) {
+      this.error = 'No se pudo copiar el código.';
+    }
+  }
+
+  downloadQr(): void {
+    if (!this.qrDataUrl) return;
+    const a = document.createElement('a');
+    a.href = this.qrDataUrl;
+    a.download = 'qr.png';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
 
   cancelEdit(): void {

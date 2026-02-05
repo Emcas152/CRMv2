@@ -23,7 +23,7 @@ export const routes: Routes = [
   {
     path: 'documents',
     loadComponent: () => import('./documents/documents-page.component').then(m => m.DocumentsPageComponent),
-    canMatch: [requireRoles(['superadmin', 'admin', 'doctor', 'staff', 'patient'])],
+    canMatch: [requireRoles(['superadmin', 'admin', 'doctor', 'patient'])],
     data: { title: 'Documentos' }
   },
   {

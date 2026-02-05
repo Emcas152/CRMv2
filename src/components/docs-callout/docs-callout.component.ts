@@ -1,5 +1,5 @@
 import { Component, computed, input } from '@angular/core';
-import { NgTemplateOutlet } from '@angular/common';
+import { NgTemplateOutlet, CommonModule } from '@angular/common';
 import { CalloutComponent } from '@coreui/angular';
 import packageJson from '../../../package.json';
 
@@ -7,6 +7,7 @@ import packageJson from '../../../package.json';
   selector: 'app-docs-callout',
   templateUrl: './docs-callout.component.html',
   imports: [CalloutComponent, NgTemplateOutlet]
+  imports: [CommonModule, CalloutComponent, NgTemplateOutlet]
 })
 export class DocsCalloutComponent {
 

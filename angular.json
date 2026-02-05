@@ -38,7 +38,7 @@
               {
                 "glob": "**/*",
                 "input": "public",
-                "output": "/crm/"
+                "output": "."
               }
             ],
             "styles": [
@@ -46,7 +46,8 @@
             ],
             "scripts": [],
             "allowedCommonJsDependencies": [
-              "qrcode"
+              "qrcode",
+              "pako"
             ],
             "stylePreprocessorOptions": {
               "sass": {
@@ -62,6 +63,10 @@
                   "with": "src/environments/environment.production.ts"
                 }
               ],
+              "outputPath": {
+                "base": "dist/coreui-free-angular-admin-template",
+                "browser": "crm"
+              },
               "budgets": [
                 {
                   "type": "initial",

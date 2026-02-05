@@ -1,5 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
+import { CommonModule } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
 import { IconDirective } from '@coreui/icons-angular';
 import {
@@ -24,6 +25,7 @@ import { firstValueFrom } from 'rxjs';
   templateUrl: './register.component.html',
   standalone: true,
   imports: [
+    CommonModule,
     ReactiveFormsModule,
     RouterLink,
     ContainerComponent,

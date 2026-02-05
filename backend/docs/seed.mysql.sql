@@ -17,6 +17,14 @@ VALUES
 ON DUPLICATE KEY UPDATE
   updated_at = CURRENT_TIMESTAMP;
 
+-- ConfiguraciÃ³n de puntos (default)
+INSERT INTO app_settings (setting_key, setting_value)
+VALUES
+  ('loyalty_points_per_item', '1')
+ON DUPLICATE KEY UPDATE
+  setting_value = VALUES(setting_value),
+  updated_at = CURRENT_TIMESTAMP;
+
 -- Pacientes (5)
 -- Nota: el paciente “patient@crm.com” está vinculado al user_id=5.
 INSERT INTO patients (user_id, name, email, phone, birthday, address, nit, loyalty_points)

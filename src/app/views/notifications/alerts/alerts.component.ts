@@ -1,4 +1,5 @@
 import { Component, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import {
   AlertComponent,
@@ -21,6 +22,7 @@ import { DocsComponentsComponent, DocsExampleComponent } from '@docs-components/
   templateUrl: './alerts.component.html',
   styleUrls: ['./alerts.component.scss'],
   imports: [RowComponent, ColComponent, CardComponent, CardHeaderComponent, CardBodyComponent, DocsExampleComponent, AlertComponent, AlertLinkDirective, RouterLink, AlertHeadingDirective, IconDirective, TemplateIdDirective, ButtonCloseDirective, ButtonDirective, DocsComponentsComponent]
+  imports: [CommonModule, RowComponent, ColComponent, CardComponent, CardHeaderComponent, CardBodyComponent, DocsExampleComponent, AlertComponent, AlertLinkDirective, RouterLink, AlertHeadingDirective, IconDirective, TemplateIdDirective, ButtonCloseDirective, ButtonDirective, DocsComponentsComponent]
 })
 export class AlertsComponent implements OnInit {
 

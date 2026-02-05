@@ -16,13 +16,9 @@
         </div>
       </c-card-header>
       <c-card-body>
-        @if (error) {
-          <c-alert color="danger" class="mb-3">{{ error }}</c-alert>
-        }
+        <c-alert *ngIf="error" color="danger" class="mb-3">{{ error }}</c-alert>
 
-        @if (submitError) {
-          <c-alert color="danger" class="mb-3">{{ submitError }}</c-alert>
-        }
+        <c-alert *ngIf="submitError" color="danger" class="mb-3">{{ submitError }}</c-alert>
 
         <form cForm class="mb-4" [formGroup]="filterForm" (ngSubmit)="refresh()">
           <div class="mb-2"><strong>Filtros</strong></div>
@@ -64,23 +60,17 @@
             <c-col md="4">
               <label cLabel for="name">Nombre</label>
               <input id="name" cFormControl type="text" formControlName="name" />
-              @if (form.controls.name.touched && form.controls.name.invalid) {
-                <div class="text-danger small mt-1">Nombre requerido.</div>
-              }
+              <div *ngIf="form.controls.name.touched && form.controls.name.invalid" class="text-danger small mt-1">Nombre requerido.</div>
             </c-col>
             <c-col md="4">
               <label cLabel for="email">Email</label>
               <input id="email" cFormControl type="email" formControlName="email" />
-              @if (form.controls.email.touched && form.controls.email.invalid) {
-                <div class="text-danger small mt-1">Email válido requerido.</div>
-              }
+              <div *ngIf="form.controls.email.touched && form.controls.email.invalid" class="text-danger small mt-1">Email válido requerido.</div>
             </c-col>
             <c-col md="4">
               <label cLabel for="role">Rol</label>
               <input id="role" cFormControl type="text" formControlName="role" placeholder="admin|staff|..." />
-              @if (form.controls.role.touched && form.controls.role.invalid) {
-                <div class="text-danger small mt-1">Rol requerido.</div>
-              }
+              <div *ngIf="form.controls.role.touched && form.controls.role.invalid" class="text-danger small mt-1">Rol requerido.</div>
             </c-col>
 
             <c-col md="4">
@@ -96,11 +86,7 @@
               <button cButton color="success" type="submit" [disabled]="isSaving">
                 {{ isSaving ? 'Guardando…' : (editingId === null ? 'Crear' : 'Guardar') }}
               </button>
-              @if (editingId !== null) {
-                <button cButton color="secondary" type="button" (click)="cancelEdit()" [disabled]="isSaving">
-                  Cancelar
-                </button>
-              }
+              <button *ngIf="editingId !== null" cButton color="secondary" type="button" (click)="cancelEdit()" [disabled]="isSaving">Cancelar</button>
             </c-col>
           </c-row>
         </form>
@@ -117,8 +103,7 @@
             </tr>
           </thead>
           <tbody>
-            @for (u of users; track u.id) {
-              <tr>
+            <tr *ngFor="let u of users">
                 <td>{{ u.id }}</td>
                 <td>{{ u.name }}</td>
                 <td>{{ u.email }}</td>
@@ -129,11 +114,9 @@
                   <button cButton color="danger" size="sm" type="button" (click)="delete(u)">Eliminar</button>
                 </td>
               </tr>
-            } @empty {
-              <tr>
+            <tr *ngIf="!users || users.length === 0">
                 <td colspan="6" class="text-center text-body-secondary">Sin datos</td>
               </tr>
-            }
           </tbody>
         </table>
       </c-card-body>

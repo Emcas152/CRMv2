@@ -1,9 +1,7 @@
 <c-row>
   <c-col xs="12">
     <app-docs-components href="components/toast" title="Toast" />
-    @for (pos of positions | slice : 1; track pos) {
-      <c-toaster class="p-3" position="fixed" placement="{{pos}}" />
-    }
+    <c-toaster *ngFor="let pos of positions | slice:1" class="p-3" position="fixed" [placement]="pos"></c-toaster>
     <c-card>
       <c-card-header>
         Toaster
@@ -30,22 +28,18 @@
                 <c-input-group class="my-2">
                   <span cInputGroupText>Position</span>
                   <select cSelect formControlName="position">
-                    @for (position of positions; track position) {
-                      <option [ngValue]="position">
-                        {{ position }}
-                      </option>
-                    }
+                      <ng-container *ngFor="let position of positions">
+                        <option [ngValue]="position">{{ position }}</option>
+                      </ng-container>
                   </select>
                 </c-input-group>
 
                 <c-input-group class="my-2">
                   <span cInputGroupText>Color</span>
                   <select cSelect formControlName="color">
-                    @for (color of colors; track color) {
-                      <option [ngValue]="color">
-                        {{ color }}
-                      </option>
-                    }
+                    <ng-container *ngFor="let color of colors">
+                      <option [ngValue]="color">{{ color }}</option>
+                    </ng-container>
                   </select>
                 </c-input-group>
 

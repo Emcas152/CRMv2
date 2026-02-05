@@ -1,4 +1,5 @@
 import { Component, inject, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 
 import { IconDirective, IconSetService } from '@coreui/icons-angular';
@@ -10,6 +11,7 @@ import { DocsIconsComponent, DocsLinkComponent } from '@docs-components/public-a
   templateUrl: 'coreui-icons.component.html',
   providers: [IconSetService],
   imports: [
+    CommonModule,
     CardComponent,
     CardHeaderComponent,
     CardBodyComponent,

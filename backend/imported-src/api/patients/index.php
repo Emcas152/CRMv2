@@ -102,7 +102,45 @@ if ($id && $action === 'upload-photo' && $method === 'POST') {
         Audit::log('upload_photo', 'patient', $id, ['photo_id' => $photoId, 'filename' => $filename, 'type' => $type]);
     }
 
-    Response::success(['id' => $photoId, 'filename' => $filename, 'url' => '/uploads/patients/' . $id . '/' . $filename], 'Foto subida');
+    // Provide a secure endpoint to fetch the photo
+    $photoUrl = '/patients/' . intval($id) . '/photo/' . intval($photoId);
+    Response::success(['id' => $photoId, 'filename' => $filename, 'url' => $photoUrl], 'Foto subida');
+}
+
+// Serve uploaded patient photo: /patients/{id}/photo/{photoId}
+if ($id && $action === 'photo' && $method === 'GET') {
+    $photoId = intval($_GET['photo_id'] ?? null) ?: null;
+    // If action is 'photo' but no photo_id in query, we may use the $action token as id if routed differently
+    // However route parser sets $action from URI; here expect /patients/{id}/photo/{photoId}
+    // Try to extract from REQUEST_URI if present
+    $matches = [];
+    if (!$photoId) {
+        if (preg_match('#/patients/(' . intval($id) . ')/photo/(\d+)#', $_SERVER['REQUEST_URI'], $matches)) {
+            $photoId = intval($matches[2]);
+        }
+    }
+
+    if (!$photoId) {
+        Response::validationError(['photo_id' => 'photo_id es requerido en la ruta: /patients/{id}/photo/{photoId}']);
+    }
+
+    $photo = $db->fetchOne('SELECT * FROM patient_photos WHERE id = ? AND patient_id = ?', [$photoId, $id]);
+    if (!$photo) {
+        Response::notFound('Foto no encontrada');
+    }
+
+    $filePath = __DIR__ . '/../../uploads/patients/' . intval($id) . '/' . $photo['filename'];
+    if (!file_exists($filePath)) {
+        Response::notFound('Archivo no encontrado en el servidor');
+    }
+
+    $mime = mime_content_type($filePath);
+    header('Content-Type: ' . $mime);
+    header('Content-Length: ' . filesize($filePath));
+    header('Content-Disposition: inline; filename="' . basename($photo['filename']) . '"');
+    header('Cache-Control: public, max-age=86400');
+    readfile($filePath);
+    exit;
 }
 
 // GET /patients - Listar pacientes

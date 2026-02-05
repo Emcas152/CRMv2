@@ -15,9 +15,15 @@ export interface DocumentItem {
   mime_type?: string | null;
   created_at?: string;
 
+  // Backend may return several URL fields; keep all as optional
+  url?: string;
   download_url?: string;
   file_url?: string;
   view_url?: string;
+
+  // Signing and metadata
+  signed?: number | boolean;
+  original_filename?: string | null;
 }
 
 export interface DocumentsListQuery {

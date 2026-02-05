@@ -18,15 +18,11 @@
                 <h1>Iniciar sesión</h1>
                 <p class="text-body-secondary">Accede a tu cuenta</p>
 
-                @if (sessionExpired) {
-                  <c-alert color="warning" class="mb-3">
+                <c-alert *ngIf="sessionExpired" color="warning" class="mb-3">
                     Tu sesión ha expirado. Por favor, inicia sesión nuevamente.
                   </c-alert>
-                }
 
-                @if (submitError) {
-                  <c-alert color="danger" class="mb-3">{{ submitError }}</c-alert>
-                }
+                <c-alert *ngIf="submitError" color="danger" class="mb-3">{{ submitError }}</c-alert>
 
                 <c-input-group class="mb-3">
                   <span cInputGroupText>
@@ -40,9 +36,7 @@
                     formControlName="email"
                   />
                 </c-input-group>
-                @if (form.controls.email.touched && form.controls.email.invalid) {
-                  <div class="text-danger small mb-2">Ingresa un email válido.</div>
-                }
+                <div *ngIf="form.controls.email.touched && form.controls.email.invalid" class="text-danger small mb-2">Ingresa un email válido.</div>
                 <c-input-group class="mb-4">
                   <span cInputGroupText>
                     <svg cIcon name="cilLockLocked"></svg>
@@ -55,9 +49,7 @@
                     formControlName="password"
                   />
                 </c-input-group>
-                @if (form.controls.password.touched && form.controls.password.invalid) {
-                  <div class="text-danger small mb-2">La contraseña es requerida.</div>
-                }
+                <div *ngIf="form.controls.password.touched && form.controls.password.invalid" class="text-danger small mb-2">La contraseña es requerida.</div>
                 <c-row>
                   <c-col xs="6">
                     <button cButton class="px-4" color="primary" type="submit" [disabled]="isSubmitting">

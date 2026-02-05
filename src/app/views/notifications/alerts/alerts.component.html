@@ -198,11 +198,9 @@
           Alerts can also be easily dismissed. Just add the <code>dismissible</code> prop.
         </p>
         <app-docs-example href="components/alert#dismissing">
-          @if (visible[0]) {
-            <c-alert [(visible)]="visible[0]" dismissible color="warning" fade>
+          <c-alert *ngIf="visible[0]" [(visible)]="visible[0]" dismissible color="warning" fade>
               <strong>Go right ahead</strong> and click that dismiss over there on the right.
             </c-alert>
-          }
           <c-alert #alertWithButtonCloseTemplate="cAlert"
                    [dismissible]="dismissible"
                    [visible]="visible[1]"
@@ -210,11 +208,9 @@
                    color="dark"
                    fade
                    variant="solid">
-            @if (alertWithButtonCloseTemplate.dismissible) {
-              <ng-template cTemplateId="alertButtonCloseTemplate">
+            <ng-template *ngIf="alertWithButtonCloseTemplate.dismissible" cTemplateId="alertButtonCloseTemplate">
                 <button (click)="visible[1]=false" cButtonClose white></button>
               </ng-template>
-            }
             <strong>Go right ahead</strong> and click that dismiss over there on the right.
           </c-alert>
           <hr>

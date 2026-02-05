@@ -1,4 +1,5 @@
 import { Component, OnInit, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import {
@@ -17,6 +18,7 @@ import { ChartData, ChartOptions } from 'chart.js';
 
 import { AuthService, AuthUser } from '../../../core/auth/auth.service';
 import { Sale, SalesService } from '../../../core/services/sales.service';
+import { AppointmentsService, Appointment } from '../../../core/services/appointments.service';
 
 @Component({
   selector: 'app-crm-home',
@@ -32,13 +34,15 @@ import { Sale, SalesService } from '../../../core/services/sales.service';
     AlertComponent,
     ButtonDirective,
     RouterLink,
-    ChartjsComponent
+    ChartjsComponent,
+    CommonModule,
   ]
 })
 export class CrmHomeComponent implements OnInit {
   readonly #sales = inject(SalesService);
   readonly #auth = inject(AuthService);
   readonly #route = inject(ActivatedRoute);
+  readonly #appointments = inject(AppointmentsService);
 
   isLoading = false;
   error: string | null = null;
@@ -53,6 +57,17 @@ export class CrmHomeComponent implements OnInit {
   pendingSalesCount = 0;
 
   recentSales: Sale[] = [];
+
+  // Filters & goals
+  period: 'today' | 'week' | 'month' | 'custom' = 'month';
+  dateFrom: string | null = null;
+  dateTo: string | null = null;
+
+  goals: { daily: number; weekly: number; monthly: number } = { daily: 0, weekly: 0, monthly: 0 };
+
+  // Weekly calendar
+  weekDays: string[] = [];
+  weekAppointments: Record<string, Appointment[]> = {};
 
   salesByDayChartData: ChartData<'line'> = { labels: [], datasets: [] };
   salesByDayChartOptions: ChartOptions<'line'> = this.#buildLineChartOptions();
@@ -84,9 +99,26 @@ export class CrmHomeComponent implements OnInit {
         return;
       }
 
-      // Sales dashboard (current month)
+      // Determine date range based on selected period
       const now = new Date();
-      const dateFrom = new Date(now.getFullYear(), now.getMonth(), 1);
+      let dateFrom = new Date(now.getFullYear(), now.getMonth(), 1);
+      let dateTo = now;
+
+      if (this.period === 'today') {
+        dateFrom = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        dateTo = new Date(dateFrom);
+      } else if (this.period === 'week') {
+        const day = now.getDay();
+        const diffToMonday = ((day + 6) % 7);
+        dateFrom = new Date(now);
+        dateFrom.setDate(now.getDate() - diffToMonday);
+        dateFrom.setHours(0, 0, 0, 0);
+        dateTo = new Date(dateFrom);
+        dateTo.setDate(dateFrom.getDate() + 6);
+      } else if (this.period === 'custom' && this.dateFrom && this.dateTo) {
+        dateFrom = new Date(this.dateFrom);
+        dateTo = new Date(this.dateTo);
+      }
 
       const fmt = (d: Date): string => {
         const y = d.getFullYear();
@@ -98,9 +130,9 @@ export class CrmHomeComponent implements OnInit {
       const res = await firstValueFrom(
         this.#sales.list({
           date_from: fmt(dateFrom),
-          date_to: fmt(now),
+          date_to: fmt(dateTo),
           page: 1,
-          per_page: 200,
+          per_page: 500,
           sort_by: 'created_at',
           sort_dir: 'desc'
         })
@@ -128,12 +160,49 @@ export class CrmHomeComponent implements OnInit {
 
       this.recentSales = data.slice(0, 10);
 
-      this.#buildCharts(data, dateFrom, now);
+      this.#buildCharts(data, dateFrom, dateTo);
+
+      // Load weekly appointments for the same range (used by calendar)
+      try {
+        const apptsRes = await firstValueFrom(this.#appointments.list({ date_from: fmt(dateFrom), date_to: fmt(dateTo), per_page: 500 }));
+        const appts = Array.isArray(apptsRes.data) ? apptsRes.data : [];
+        this._buildWeekCalendar(dateFrom, dateTo, appts);
+      } catch (e) {
+        // ignore calendar errors
+      }
+
+      // Load saved goals
+      this._loadGoals();
     } catch (err: any) {
       this.error = this.#formatError(err);
     } finally {
       this.isLoading = false;
     }
+  }
+
+  onPeriodChange(event: Event): void {
+    const value = (event.target as HTMLSelectElement | null)?.value as any;
+    if (value === 'today' || value === 'week' || value === 'month' || value === 'custom') {
+      this.period = value;
+    } else {
+      this.period = 'month';
+    }
+    void this.load();
+  }
+
+  onDateFromChange(event: Event): void {
+    this.dateFrom = (event.target as HTMLInputElement | null)?.value || null;
+  }
+
+  onDateToChange(event: Event): void {
+    this.dateTo = (event.target as HTMLInputElement | null)?.value || null;
+  }
+
+  onGoalChange(kind: 'daily' | 'weekly' | 'monthly', event: Event): void {
+    const raw = (event.target as HTMLInputElement | null)?.value;
+    const n = Number(raw);
+    const value = Number.isFinite(n) ? n : 0;
+    this.goals = { ...this.goals, [kind]: value };
   }
 
   formatMoney(value: number): string {
@@ -145,6 +214,47 @@ export class CrmHomeComponent implements OnInit {
     const message = err?.error?.message ?? err?.message;
     if (typeof message === 'string' && message.trim().length) return message;
     return 'No se pudo cargar el dashboard.';
+  }
+
+  private _loadGoals(): void {
+    try {
+      const raw = localStorage.getItem('dashboard_goals');
+      if (raw) this.goals = JSON.parse(raw);
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  saveGoals(): void {
+    try {
+      localStorage.setItem('dashboard_goals', JSON.stringify(this.goals));
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  private _buildWeekCalendar(from: Date, to: Date, appts: Appointment[]): void {
+    const fmt = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+
+    this.weekDays = [];
+    this.weekAppointments = {};
+    const cur = new Date(from);
+    while (cur <= to) {
+      const key = fmt(cur);
+      this.weekDays.push(key);
+      this.weekAppointments[key] = [];
+      cur.setDate(cur.getDate() + 1);
+    }
+
+    for (const a of appts) {
+      const day = (a.appointment_date || '').slice(0, 10);
+      if (this.weekAppointments[day]) this.weekAppointments[day].push(a);
+    }
   }
 
   #buildCharts(sales: Sale[], dateFrom: Date, dateTo: Date): void {

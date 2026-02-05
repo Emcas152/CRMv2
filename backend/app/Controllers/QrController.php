@@ -14,6 +14,7 @@ class QrController
         require_once __DIR__ . '/../Core/Response.php';
         require_once __DIR__ . '/../Core/Audit.php';
         require_once __DIR__ . '/../Core/ErrorHandler.php';
+        require_once __DIR__ . '/../Core/FieldEncryption.php';
     }
 
     public function handle($action = null)
@@ -53,6 +54,8 @@ class QrController
             \App\Core\Response::notFound('Código QR no asociado a ningún paciente');
         }
 
+        $patient = $this->decryptPatientFields($patient);
+
         $role = (string)($user['role'] ?? '');
         if ($role === 'patient') {
             $owns = (!empty($patient['user_id']) && intval($patient['user_id']) === intval($user['user_id'] ?? 0))
@@ -87,7 +90,7 @@ class QrController
                 }
 
                 $patient = $db->fetchOne('SELECT * FROM patients WHERE id = ?', [$patient['id']]);
-                \App\Core\Response::success($patient, 'Puntos añadidos por QR');
+                \App\Core\Response::success($this->patientForBilling($patient), 'Puntos añadidos por QR');
             }
 
             if ($action === 'redeem') {
@@ -110,7 +113,7 @@ class QrController
                 }
 
                 $patient = $db->fetchOne('SELECT * FROM patients WHERE id = ?', [$patient['id']]);
-                \App\Core\Response::success($patient, 'Puntos canjeados por QR');
+                \App\Core\Response::success($this->patientForBilling($patient), 'Puntos canjeados por QR');
             }
 
             if (class_exists('\\App\\Core\\Audit')) {
@@ -120,10 +123,40 @@ class QrController
                 ]);
             }
 
-            \App\Core\Response::success($patient, 'Paciente encontrado por QR');
+            \App\Core\Response::success($this->patientForBilling($patient), 'Paciente encontrado por QR');
         } catch (\Exception $e) {
             \App\Core\Response::dbException('Error al procesar QR', $e);
         }
+    }
+
+    private function decryptPatientFields($patient)
+    {
+        if (!is_array($patient)) return $patient;
+
+        if (!empty($patient['email_encrypted'])) {
+            try { $patient['email'] = \App\Core\FieldEncryption::decryptValue($patient['email_encrypted']); } catch (\Exception $e) {}
+        }
+        if (!empty($patient['phone_encrypted'])) {
+            try { $patient['phone'] = \App\Core\FieldEncryption::decryptValue($patient['phone_encrypted']); } catch (\Exception $e) {}
+        }
+
+        return $patient;
+    }
+
+    private function patientForBilling($patient): array
+    {
+        $p = $this->decryptPatientFields($patient);
+        if (!is_array($p)) $p = [];
+
+        return [
+            'id' => intval($p['id'] ?? 0),
+            'name' => $p['name'] ?? null,
+            'email' => $p['email'] ?? null,
+            'phone' => $p['phone'] ?? null,
+            'address' => $p['address'] ?? null,
+            'nit' => $p['nit'] ?? null,
+            'loyalty_points' => intval($p['loyalty_points'] ?? 0),
+        ];
     }
 }
 
