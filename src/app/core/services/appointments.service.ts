@@ -26,6 +26,7 @@ export interface AppointmentsListQuery {
   patient_id?: Id;
   staff_member_id?: Id;
   status?: AppointmentStatus;
+  my_only?: boolean;
   page?: number;
   per_page?: number;
   sort_by?: string;
@@ -103,5 +104,12 @@ export class AppointmentsService {
     return this.#api
       .request<ApiEnvelope<unknown> | unknown>(`/appointments/${id}/send-whatsapp`, { method: 'POST' })
       .pipe(map(unwrapApiEnvelope));
+  }
+
+  consentPdf(id: Id, download = false): Observable<Blob> {
+    return this.#api.requestBlob(`/appointments/${id}/consent-pdf`, {
+      method: 'GET',
+      params: download ? { download: 1 } : undefined
+    });
   }
 }

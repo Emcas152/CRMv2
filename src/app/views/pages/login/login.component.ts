@@ -76,15 +76,16 @@ export class LoginComponent implements OnInit {
 
     try {
       const res = await firstValueFrom(this.#auth.login(email, password));
-      const role = String(res?.user?.role ?? '').toLowerCase();
-      const targetUrl = role === 'patient' ? '/crm/welcome' : '/crm';
+        const role = String(res?.user?.role ?? '').toLowerCase();
+        const isPatient = role === 'patient' || role === 'paciente';
+        const targetUrl = isPatient ? '/crm/welcome' : '/crm';
 
       // Wait for navigation to complete before clearing isSubmitting
       const navigated = await this.#router.navigateByUrl(targetUrl);
       if (!navigated) {
         // Navigation was blocked (e.g., by a guard), try fallback route
         console.warn('Navigation to', targetUrl, 'was blocked, trying fallback');
-        if (role === 'patient') {
+          if (isPatient) {
           await this.#router.navigateByUrl('/crm/appointments');
         }
       }

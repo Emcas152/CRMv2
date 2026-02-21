@@ -60,8 +60,24 @@ export class TokenStorageService {
   isTokenExpired(): boolean {
     const payload = this.getTokenPayload();
     if (!payload) return true;
-    const exp = payload['exp'];
-    if (typeof exp !== 'number') return true;
-    return exp * 1000 < Date.now();
+    let exp = payload['exp'];
+
+    // Accept numeric strings as well as numbers
+    if (typeof exp === 'string' && /^[0-9]+$/.test(exp)) {
+      exp = parseInt(exp, 10);
+    }
+
+    if (typeof exp !== 'number') {
+      console.warn('TokenStorage: exp claim missing or invalid in token payload');
+      return true;
+    }
+
+    // exp may be in seconds (standard JWT) or milliseconds. Heuristic:
+    // if exp looks like milliseconds (> 1e12), compare directly, otherwise treat as seconds.
+    const now = Date.now();
+    if (exp > 1e12) {
+      return exp < now;
+    }
+    return exp * 1000 < now;
   }
 }

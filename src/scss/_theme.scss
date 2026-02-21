@@ -5,6 +5,133 @@ body {
   background-color: var(--cui-tertiary-bg);
 }
 
+/* ===== Navbar / Sidebar theming (theme-aware) ===== */
+
+.app-topbar {
+  background: linear-gradient(
+    180deg,
+    var(--cui-body-bg),
+    color-mix(in srgb, var(--cui-body-bg) 86%, var(--cui-primary) 14%)
+  );
+  border-bottom-color: color-mix(in srgb, var(--cui-border-color) 72%, transparent);
+  box-shadow:
+    0 10px 24px color-mix(in srgb, var(--cui-black) 10%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--cui-body-color) 6%, transparent);
+}
+
+.app-breadcrumbbar {
+  background: var(--cui-body-bg);
+}
+
+/* Top navbar links: subtle pill on hover/active */
+.app-topbar .nav-link {
+  border-radius: 10px;
+}
+
+.app-topbar .nav-link:hover {
+  background: color-mix(in srgb, var(--cui-primary) 10%, transparent);
+}
+
+.app-topbar .nav-link.active {
+  background: color-mix(in srgb, var(--cui-primary) 14%, transparent);
+  color: var(--cui-emphasis-color);
+}
+
+/* Sidebar: keep dark scheme but add brand-tinted depth */
+.app-sidebar {
+  --cui-sidebar-bg: var(--cui-body-bg);
+  --cui-sidebar-color: var(--cui-body-color);
+  --cui-sidebar-brand-color: var(--cui-emphasis-color);
+  --cui-sidebar-nav-link-color: var(--cui-body-color);
+  --cui-sidebar-nav-link-hover-color: var(--cui-emphasis-color);
+  --cui-sidebar-nav-link-active-color: var(--cui-emphasis-color);
+  --cui-sidebar-nav-link-hover-bg: color-mix(in srgb, var(--cui-primary) 10%, transparent);
+  --cui-sidebar-nav-link-active-bg: color-mix(in srgb, var(--cui-primary) 16%, transparent);
+  --app-sidebar-indicator: var(--cui-primary);
+  --app-sidebar-indicator-muted: color-mix(in srgb, var(--cui-primary) 28%, transparent);
+
+  background: linear-gradient(
+    180deg,
+    var(--cui-sidebar-bg),
+    color-mix(in srgb, var(--cui-sidebar-bg) 86%, var(--cui-primary) 14%)
+  );
+  border-right: 1px solid color-mix(in srgb, var(--cui-border-color) 70%, transparent);
+  box-shadow:
+    0 16px 40px color-mix(in srgb, var(--cui-black) 14%, transparent),
+    inset -1px 0 0 color-mix(in srgb, var(--cui-body-color) 6%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--cui-body-color) 6%, transparent);
+}
+
+.app-sidebar .sidebar-header {
+  background: transparent;
+}
+
+.app-sidebar .sidebar-nav .nav-link {
+  border-radius: 10px;
+  margin: 2px 10px;
+  position: relative;
+  color: var(--cui-sidebar-nav-link-color);
+  transition: background-color .15s ease, color .15s ease, box-shadow .15s ease;
+}
+
+/* Icons inside sidebar links should follow link color */
+.app-sidebar .sidebar-nav .nav-link .nav-icon,
+.app-sidebar .sidebar-nav .nav-link svg {
+  color: currentColor;
+  fill: currentColor;
+}
+
+/* Subtle left indicator (active) */
+.app-sidebar .sidebar-nav .nav-link::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: 8px;
+  inset-block: 22%;
+  width: 3px;
+  border-radius: 9999px;
+  background: transparent;
+  transition: background-color .18s ease, transform .18s ease, inset-block .18s ease;
+}
+
+.app-sidebar .sidebar-nav .nav-link:hover {
+  background: var(--cui-sidebar-nav-link-hover-bg);
+  color: var(--cui-sidebar-nav-link-hover-color);
+}
+
+.app-sidebar .sidebar-nav .nav-link.active {
+  background: var(--cui-sidebar-nav-link-active-bg);
+  color: var(--cui-sidebar-nav-link-active-color);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--cui-primary) 22%, transparent),
+    0 10px 22px color-mix(in srgb, var(--cui-black) 10%, transparent);
+}
+
+.app-sidebar .sidebar-nav .nav-link.active::before {
+  background: var(--app-sidebar-indicator);
+  inset-block: 18%;
+  transform: translateX(0);
+}
+
+/* "Rail" behind the active item (very subtle) */
+.app-sidebar .sidebar-nav .nav-link.active::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border-radius: 12px;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--cui-primary) 10%, transparent),
+    transparent 55%
+  );
+  opacity: .9;
+}
+
+/* If a nav-group is open, slightly emphasize its toggler */
+.app-sidebar .sidebar-nav .nav-group.show > .nav-link {
+  color: var(--cui-sidebar-nav-link-hover-color);
+}
+
 .wrapper {
   width: 100%;
   padding-inline: var(--cui-sidebar-occupy-start, 0) var(--cui-sidebar-occupy-end, 0);
@@ -70,5 +197,64 @@ body {
     color: var(--cui-body-color);
     // lighter border for separation in dark mode
     border-bottom-color: rgba(255,255,255,0.06);
+  }
+
+  .app-topbar {
+    background: linear-gradient(
+      180deg,
+      var(--cui-dark-bg),
+      color-mix(in srgb, var(--cui-dark-bg) 86%, var(--cui-primary) 14%)
+    );
+    box-shadow:
+      0 10px 26px color-mix(in srgb, var(--cui-black) 22%, transparent),
+      inset 0 1px 0 color-mix(in srgb, var(--cui-white) 7%, transparent);
+  }
+
+  .app-breadcrumbbar {
+    background: var(--cui-dark-bg);
+  }
+
+  .app-sidebar {
+    --cui-sidebar-bg: var(--cui-dark);
+    --cui-sidebar-color: rgba(255, 255, 255, 0.88);
+    --cui-sidebar-brand-color: rgba(255, 255, 255, 0.92);
+    --cui-sidebar-nav-link-color: rgba(255, 255, 255, 0.84);
+    --cui-sidebar-nav-link-hover-color: rgba(255, 255, 255, 0.95);
+    --cui-sidebar-nav-link-active-color: rgba(255, 255, 255, 0.95);
+    --cui-sidebar-nav-link-hover-bg: rgba(255, 255, 255, 0.06);
+    --cui-sidebar-nav-link-active-bg: color-mix(in srgb, var(--cui-primary) 26%, transparent);
+    --app-sidebar-indicator: color-mix(in srgb, var(--cui-primary) 70%, var(--cui-white) 30%);
+    --app-sidebar-indicator-muted: rgba(255, 255, 255, 0.10);
+
+    background: linear-gradient(
+      180deg,
+      var(--cui-sidebar-bg),
+      color-mix(in srgb, var(--cui-sidebar-bg) 86%, var(--cui-primary) 14%)
+    );
+
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow:
+      0 18px 44px color-mix(in srgb, var(--cui-black) 36%, transparent),
+      inset -1px 0 0 rgba(255, 255, 255, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+
+  .app-sidebar .sidebar-nav .nav-link.active {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--cui-primary) 28%, transparent),
+      0 10px 24px color-mix(in srgb, var(--cui-black) 28%, transparent);
+  }
+
+  .app-sidebar .sidebar-nav .nav-link.active::after {
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--cui-primary) 16%, transparent),
+      transparent 55%
+    );
+    opacity: .85;
+  }
+
+  .app-sidebar .sidebar-nav .nav-link:hover::before {
+    background: var(--app-sidebar-indicator-muted);
   }
 }

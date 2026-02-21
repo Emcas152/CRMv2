@@ -23,6 +23,7 @@ require_once __DIR__ . '/../app/Controllers/TasksController.php';
 require_once __DIR__ . '/../app/Controllers/CommentsController.php';
 require_once __DIR__ . '/../app/Controllers/ReportController.php';
 require_once __DIR__ . '/../app/Controllers/TwoFactorController.php';
+require_once __DIR__ . '/../app/Controllers/AttendanceSheetsController.php';
 
 use App\Controllers\AuthController;
 use App\Controllers\ClienteController;
@@ -43,6 +44,7 @@ use App\Controllers\TasksController;
 use App\Controllers\ReportController;
 use App\Controllers\CommentsController;
 use App\Controllers\TwoFactorController;
+use App\Controllers\AttendanceSheetsController;
 
 $base = '/api/v1';
 
@@ -144,6 +146,13 @@ if (preg_match("#^$baseQuoted/appointments(?:/(\d+))?(?:/([a-z-]+))?$#", $uri, $
     $id = $m[1] ?? null;
     $action = $m[2] ?? null;
     (new AppointmentsController())->handle($id, $action);
+}
+
+// Attendance sheets
+if (preg_match("#^$baseQuoted/attendance-sheets(?:/(\d+))?(?:/([a-z-]+))?$#", $uri, $m)) {
+    $id = $m[1] ?? null;
+    $action = $m[2] ?? null;
+    (new AttendanceSheetsController())->handle($id, $action);
 }
 
 // Staff members

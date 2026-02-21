@@ -3,19 +3,8 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 
-import {
-  AlertComponent,
-  ButtonDirective,
-  CardBodyComponent,
-  CardComponent,
-  CardHeaderComponent,
-  ColComponent,
-  FormControlDirective,
-  FormDirective,
-  FormLabelDirective,
-  RowComponent,
-  TableDirective
-} from '@coreui/angular';
+import { ButtonCloseDirective, ButtonDirective, ButtonModule, ModalComponent, ModalHeaderComponent, ModalBodyComponent, ModalFooterComponent, ModalTitleDirective } from '@coreui/angular';
+import { RouterLink } from '@angular/router';
 
 import {
   CreatePatientRequest,
@@ -34,17 +23,15 @@ import * as QRCode from 'qrcode';
   imports: [
     ReactiveFormsModule,
     CommonModule,
-    RowComponent,
-    ColComponent,
-    CardComponent,
-    CardHeaderComponent,
-    CardBodyComponent,
-    TableDirective,
+    ButtonCloseDirective,
     ButtonDirective,
-    AlertComponent,
-    FormDirective,
-    FormLabelDirective,
-    FormControlDirective
+    ButtonModule,
+    ModalComponent,
+    ModalHeaderComponent,
+    ModalBodyComponent,
+    ModalFooterComponent,
+    ModalTitleDirective,
+    RouterLink
   ]
   ,
   styleUrls: ['./patients-page.component.scss']
@@ -72,6 +59,7 @@ export class PatientsPageComponent implements OnInit {
 
   isSaving = false;
   editingId: number | null = null;
+  showCreateForm = false;
 
   readonly filterForm = this.#fb.nonNullable.group({
     search: [''],
@@ -86,10 +74,29 @@ export class PatientsPageComponent implements OnInit {
     name: ['', [Validators.required]],
     email: ['', [Validators.required, Validators.email]],
     phone: [''],
+    mobile_phone: [''],
+    home_phone: [''],
     birthday: [''],
+    age: [''],
     address: [''],
-    nit: ['']
+    nit: [''],
+    marital_status: [''],
+    spouse_name: [''],
+    place_of_birth: [''],
+    nationality: [''],
+    dpi: [''],
+    blood_type: [''],
+    profession: [''],
+    workplace: [''],
+    referred_by: [''],
+    reason_for_consultation: [''],
+    invoice_name: ['']
   });
+
+  get maxPage(): number {
+    const perPage = Number(this.filterForm.controls.per_page.value) || 20;
+    return Math.max(1, Math.ceil((Number(this.total) || 0) / perPage));
+  }
 
   ngOnInit(): void {
     void this.refresh();
@@ -137,10 +144,34 @@ export class PatientsPageComponent implements OnInit {
     await this.refresh();
   }
 
+  toggleCreateForm(): void {
+    this.showCreateForm = !this.showCreateForm;
+    if (this.showCreateForm) this.startCreate();
+  }
+
+  closeModal(): void {
+    this.showCreateForm = false;
+    this.cancelEdit();
+  }
+
+  onModalVisibleChange(visible: boolean): void {
+    this.showCreateForm = visible;
+    if (!visible) {
+      this.cancelEdit();
+    }
+  }
+
+  startEditAndShow(p: Patient): void {
+    this.startEdit(p);
+    this.showCreateForm = true;
+  }
+
   startCreate(): void {
     this.editingId = null;
     this.submitError = null;
-    this.form.reset({ name: '', email: '', phone: '', birthday: '', address: '', nit: '' });
+    this.form.reset({
+      name: '', email: '', phone: '', mobile_phone: '', home_phone: '', birthday: '', age: '', address: '', nit: '', marital_status: '', spouse_name: '', place_of_birth: '', nationality: '', dpi: '', blood_type: '', profession: '', workplace: '', referred_by: '', reason_for_consultation: '', invoice_name: ''
+    });
   }
 
   startEdit(p: Patient): void {
@@ -149,10 +180,24 @@ export class PatientsPageComponent implements OnInit {
     this.form.reset({
       name: p.name ?? '',
       email: p.email ?? '',
-      phone: p.phone ?? '',
-      birthday: p.birthday ?? '',
-      address: p.address ?? '',
-      nit: p.nit ?? ''
+      phone: (p as any).phone ?? '',
+      mobile_phone: (p as any).mobile_phone ?? '',
+      home_phone: (p as any).home_phone ?? '',
+      birthday: (p as any).birthday ?? '',
+      age: (p as any).age ?? '',
+      address: (p as any).address ?? '',
+      nit: (p as any).nit ?? '',
+      marital_status: (p as any).marital_status ?? '',
+      spouse_name: (p as any).spouse_name ?? '',
+      place_of_birth: (p as any).place_of_birth ?? '',
+      nationality: (p as any).nationality ?? '',
+      dpi: (p as any).dpi ?? '',
+      blood_type: (p as any).blood_type ?? '',
+      profession: (p as any).profession ?? '',
+      workplace: (p as any).workplace ?? '',
+      referred_by: (p as any).referred_by ?? '',
+      reason_for_consultation: (p as any).reason_for_consultation ?? '',
+      invoice_name: (p as any).invoice_name ?? ''
     });
   }
 
@@ -172,22 +217,51 @@ export class PatientsPageComponent implements OnInit {
       name: raw.name.trim(),
       email: raw.email.trim(),
       phone: raw.phone.trim() || undefined,
-      birthday: raw.birthday.trim() || undefined,
-      address: raw.address.trim() || undefined,
-      nit: raw.nit.trim() || undefined
+      mobile_phone: raw.mobile_phone?.trim() || undefined,
+      home_phone: raw.home_phone?.trim() || undefined,
+      birthday: raw.birthday?.trim() || undefined,
+      age: raw.age?.toString?.().trim() || undefined,
+      address: raw.address?.trim() || undefined,
+      nit: raw.nit?.trim() || undefined,
+      marital_status: raw.marital_status?.trim() || undefined,
+      spouse_name: raw.spouse_name?.trim() || undefined,
+      place_of_birth: raw.place_of_birth?.trim() || undefined,
+      nationality: raw.nationality?.trim() || undefined,
+      dpi: raw.dpi?.trim() || undefined,
+      blood_type: raw.blood_type?.trim() || undefined,
+      profession: raw.profession?.trim() || undefined,
+      workplace: raw.workplace?.trim() || undefined,
+      referred_by: raw.referred_by?.trim() || undefined,
+      reason_for_consultation: raw.reason_for_consultation?.trim() || undefined,
+      invoice_name: raw.invoice_name?.trim() || undefined
     };
 
     try {
       if (this.editingId === null) {
         await firstValueFrom(this.#patients.create(payloadBase as CreatePatientRequest));
+        this.showCreateForm = false;
         this.startCreate();
       } else {
         const update: UpdatePatientRequest = {
           ...payloadBase,
-          phone: raw.phone.trim() ? raw.phone.trim() : null,
-          birthday: raw.birthday.trim() ? raw.birthday.trim() : null,
-          address: raw.address.trim() ? raw.address.trim() : null,
-          nit: raw.nit.trim() ? raw.nit.trim() : null
+          phone: raw.phone?.trim() ? raw.phone.trim() : null,
+          mobile_phone: raw.mobile_phone?.trim() ? raw.mobile_phone.trim() : null,
+          home_phone: raw.home_phone?.trim() ? raw.home_phone.trim() : null,
+          birthday: raw.birthday?.trim() ? raw.birthday.trim() : null,
+          age: raw.age ? raw.age : null,
+          address: raw.address?.trim() ? raw.address.trim() : null,
+          nit: raw.nit?.trim() ? raw.nit.trim() : null,
+          marital_status: raw.marital_status?.trim() ? raw.marital_status.trim() : null,
+          spouse_name: raw.spouse_name?.trim() ? raw.spouse_name.trim() : null,
+          place_of_birth: raw.place_of_birth?.trim() ? raw.place_of_birth.trim() : null,
+          nationality: raw.nationality?.trim() ? raw.nationality.trim() : null,
+          dpi: raw.dpi?.trim() ? raw.dpi.trim() : null,
+          blood_type: raw.blood_type?.trim() ? raw.blood_type.trim() : null,
+          profession: raw.profession?.trim() ? raw.profession.trim() : null,
+          workplace: raw.workplace?.trim() ? raw.workplace.trim() : null,
+          referred_by: raw.referred_by?.trim() ? raw.referred_by.trim() : null,
+          reason_for_consultation: raw.reason_for_consultation?.trim() ? raw.reason_for_consultation.trim() : null,
+          invoice_name: raw.invoice_name?.trim() ? raw.invoice_name.trim() : null
         };
         await firstValueFrom(this.#patients.update(this.editingId, update));
       }
@@ -348,9 +422,28 @@ export class PatientsPageComponent implements OnInit {
   }
 
   #formatError(err: any): string {
-    const message = err?.error?.message ?? err?.message;
-    if (typeof message === 'string' && message.trim().length) return message;
-    return 'No se pudieron cargar los pacientes.';
+    // Prefer structured API messages when available (validation errors, etc.)
+    try {
+      const apiMessage = err?.error?.message;
+      if (typeof apiMessage === 'string' && apiMessage.trim().length) return apiMessage;
+
+      // Some backends return an `errors` object with field errors
+      const errors = err?.error?.errors;
+      if (errors && typeof errors === 'object') {
+        const parts: string[] = [];
+        for (const [k, v] of Object.entries(errors)) {
+          if (Array.isArray(v)) parts.push(`${k}: ${v.join(', ')}`);
+          else parts.push(`${k}: ${String(v)}`);
+        }
+        if (parts.length) return parts.join(' — ');
+      }
+
+      const message = err?.message;
+      if (typeof message === 'string' && message.trim().length) return message;
+    } catch {
+      // fallthrough
+    }
+    return 'No se pudieron completar la operación.';
   }
 
   trackByPatient(_index: number, p: Patient): number | string {

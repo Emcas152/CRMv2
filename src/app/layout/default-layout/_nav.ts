@@ -36,7 +36,7 @@ export const navItems: NavItemWithRoles[] = [
     name: 'Documentos',
     url: '/crm/documents',
     iconComponent: { name: 'cil-description' },
-    roles: ['superadmin', 'admin', 'doctor', 'patient']
+    roles: ['superadmin', 'admin', 'doctor', 'staff', 'patient']
   },
   {
     name: 'Productos',
@@ -84,10 +84,5 @@ export const navItems: NavItemWithRoles[] = [
     name: 'Perfil',
     url: '/crm/profile',
     iconComponent: { name: 'cil-settings' }
-  },
-  {
-    name: 'QR',
-    url: '/crm/qr',
-    iconComponent: { name: 'cil-qr-code' }
   }
 ];

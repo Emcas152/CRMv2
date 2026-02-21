@@ -1,0 +1,7 @@
+{
+  "name": "crm/backend",
+  "description": "CRM Backend (PDF generation)",
+  "require": {
+    "dompdf/dompdf": "^2.0"
+  }
+}

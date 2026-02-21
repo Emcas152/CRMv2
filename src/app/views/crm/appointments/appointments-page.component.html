@@ -217,6 +217,9 @@
                       <button cButton color="info" size="sm" type="button" (click)="startEdit(a)" title="Editar">
                         ✏️
                       </button>
+                      <button cButton color="primary" size="sm" type="button" (click)="openConsentPdf(a)" title="Consentimiento informado (PDF)">
+                        📄
+                      </button>
                       <button cButton color="success" size="sm" type="button" (click)="updateStatus(a, 'confirmed')" [disabled]="actingId !== null || a.status === 'confirmed'" title="Confirmar">
                         ✓
                       </button>
@@ -241,6 +244,39 @@
               <button cButton color="light" size="sm" type="button" (click)="prevPage()" [disabled]="isLoading || filterForm.controls.page.value <= 1">Anterior</button>
               <button cButton color="light" size="sm" type="button" (click)="nextPage()" [disabled]="isLoading">Siguiente</button>
             </div>
+          </div>
+        </div>
+
+        <!-- Appointment History for Patients -->
+        <div *ngIf="isPatient && items.length > 0" class="mt-4">
+          <h6>Historial de Citas</h6>
+          <div class="table-responsive">
+            <table class="table table-sm table-hover">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Hora</th>
+                  <th>Servicio</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let a of items; trackBy: trackByAppointment">
+                  <td>{{ a.appointment_date }}</td>
+                  <td>{{ a.appointment_time }}</td>
+                  <td>{{ a.service }}</td>
+                  <td>
+                    <span class="badge"
+                          [class.bg-warning]="a.status === 'pending'"
+                          [class.bg-primary]="a.status === 'confirmed'"
+                          [class.bg-success]="a.status === 'completed'"
+                          [class.bg-secondary]="a.status === 'cancelled'">
+                      {{ a.status ? statusLabels[a.status] : a.status }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </c-card-body>

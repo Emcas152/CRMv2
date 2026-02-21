@@ -114,6 +114,15 @@ export class AuthService {
     );
   }
 
+  verifyEmail(token: string): Observable<{ user_id: number; email: string }> {
+    return this.#api
+      .request<ApiEnvelope<{ user_id: number; email: string }> | { user_id: number; email: string }>('/auth/verify-email', {
+        method: 'GET',
+        params: { token }
+      })
+      .pipe(map(unwrapApiEnvelope));
+  }
+
   getToken(): string | null {
     return this.#tokenStorage.getToken();
   }

@@ -145,7 +145,8 @@ export class AppointmentsPageComponent implements OnInit {
     try {
       const res = await this.#auth.me().toPromise?.();
       this.me = (res as any)?.user ?? null;
-      this.isPatient = String(this.me?.role ?? '').toLowerCase() === 'patient';
+      const role = String(this.me?.role ?? '').toLowerCase();
+      this.isPatient = role === 'patient' || role === 'paciente';
       this.patientIdForFilter = Number((res as any)?.patient?.id ?? 0) || 0;
       if (this.isPatient && this.patientIdForFilter > 0) {
         this.filterForm.controls.patient_id.setValue(this.patientIdForFilter as any);
@@ -182,24 +183,34 @@ export class AppointmentsPageComponent implements OnInit {
       page: Number(raw.page) || 1,
       per_page: Number(raw.per_page) || 20
     };
+    if (this.isPatient) query.my_only = true;
     if (Number(raw.patient_id) > 0) query.patient_id = Number(raw.patient_id) as Id;
     if (raw.status) query.status = raw.status;
     if (raw.date_from.trim().length) query.date_from = raw.date_from.trim();
     if (raw.date_to.trim().length) query.date_to = raw.date_to.trim();
 
     try {
-      if (this.isPatient) {
-        // Patients may not have permissions to list all appointments — skip listing and refresh calendar only.
-        this.items = [];
-        await this.loadAllAppointments();
-      } else {
-        const res = await firstValueFrom(this.#appointments.list(query));
-        this.total = res.total;
-        this.items = res.data;
-        // refresh calendar events when listing changes
-        void this.loadAllAppointments();
-      }
+      const res = await firstValueFrom(this.#appointments.list(query));
+      this.total = res.total;
+      this.items = res.data;
+      // refresh calendar events when listing changes
+      void this.loadAllAppointments();
     } catch (err: any) {
+      // If patient and backend disallows listing without explicit patient filter,
+      // try again forcing the patient's id so they can see their own history.
+      if (this.isPatient) {
+        try {
+          const q2: any = { ...query };
+          if (this.patientIdForFilter > 0) q2.patient_id = this.patientIdForFilter;
+          const res2 = await firstValueFrom(this.#appointments.list(q2));
+          this.items = res2.data;
+          this.total = res2.total ?? (this.items?.length || 0);
+          void this.loadAllAppointments();
+          return;
+        } catch {
+          // fall through to set error below
+        }
+      }
       this.error = this.#formatError(err);
     } finally {
       this.isLoading = false;
@@ -208,7 +219,24 @@ export class AppointmentsPageComponent implements OnInit {
 
   async loadAllAppointments(): Promise<void> {
     try {
-      const res = await firstValueFrom(this.#appointments.list({ per_page: 500 } as any));
+      // Fetch appointments covering the visible calendar grid (includes days from previous/next month)
+      const year = this.currentDate.getFullYear();
+      const month = this.currentDate.getMonth();
+      const firstOfMonth = new Date(year, month, 1);
+      const startDay = firstOfMonth.getDay();
+      const gridStart = new Date(year, month, 1 - startDay);
+      // last day of month
+      const lastOfMonth = new Date(year, month + 1, 0);
+      const lastDay = lastOfMonth.getDay();
+      const gridEnd = new Date(year, month + 1, (6 - lastDay) === 0 ? lastOfMonth.getDate() : lastOfMonth.getDate() + (6 - lastDay));
+
+      const q: any = {
+        per_page: 1000,
+        date_from: this.formatDateStr(gridStart),
+        date_to: this.formatDateStr(gridEnd)
+      };
+      if (this.isPatient && this.patientIdForFilter > 0) q.patient_id = this.patientIdForFilter;
+      const res = await firstValueFrom(this.#appointments.list(q as any));
       this.allAppointments = res.data || [];
       this.generateCalendar();
     } catch (e) {
@@ -562,6 +590,18 @@ export class AppointmentsPageComponent implements OnInit {
       setTimeout(() => {
         delete this.rowStatusById[String(a.id)];
       }, 2500);
+    }
+  }
+
+  async openConsentPdf(a: Appointment, download = false): Promise<void> {
+    this.actionError = null;
+    try {
+      const blob = await firstValueFrom(this.#appointments.consentPdf(a.id, download));
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch (err: any) {
+      this.actionError = this.#formatError(err);
     }
   }
 

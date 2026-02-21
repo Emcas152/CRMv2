@@ -1,184 +1,575 @@
-<c-row>
-  <c-col xs="12">
-    <c-card class="mb-4">
-      <c-card-header class="d-flex justify-content-between align-items-center">
-        <div>
-          <strong>Perfil</strong>
+<!-- Alerts -->
+<div *ngIf="error" class="alert alert-danger mx-2 mt-2 mb-0">{{ error }}</div>
+<div *ngIf="info" class="alert alert-success mx-2 mt-2 mb-0">{{ info }}</div>
+
+<div class="profile-page">
+
+  <!-- Loading state -->
+  <div *ngIf="isLoading" class="text-center py-5">
+    <div class="spinner-border text-primary" role="status"></div>
+    <div class="mt-2 text-body-secondary">Cargando perfil…</div>
+  </div>
+
+  <!-- Main Profile Grid -->
+  <div *ngIf="!isLoading && profile" class="profile-grid">
+
+    <!-- ═══ Left Column: Profile Card ═══ -->
+    <div class="profile-card">
+      <div class="profile-avatar-wrap">
+        <img [src]="profile?.user?.avatar_url || profile?.user?.photo || 'assets/img/default-avatar.svg'"
+             alt="Avatar" class="profile-avatar" />
+      </div>
+
+      <h3 class="profile-name">{{ profile?.user?.name || 'Nombre' }}</h3>
+      <div class="profile-role">{{ profile?.staff_member?.title || profile?.user?.role || '' }}</div>
+
+      <div *ngIf="profile?.user?.is_super_admin" class="mb-2">
+        <span class="badge bg-warning text-dark">Super Admin</span>
+      </div>
+
+      <div class="profile-date">{{ currentDate | date:'EEEE, MMM d' }} / {{ currentDate | date:'h:mm a' }}</div>
+
+      <button class="btn profile-edit-btn" type="button" (click)="openSlide()">Editar Mi Perfil</button>
+    </div>
+
+    <!-- ═══ Right Column: Info Cards ═══ -->
+    <div class="profile-info-col">
+
+      <!-- Membresía Card -->
+      <div class="info-card" *ngIf="hasPatient">
+        <h5 class="info-card-title">Membresía</h5>
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <span class="membership-icon text-primary">&#9906;</span>
+              <span class="fw-semibold text-body-emphasis">V Medical Spa</span>
+            </div>
+            <div class="d-flex align-items-center gap-2 mb-1">
+              <span>&#9679;</span>
+              <span>Gold Member</span>
+            </div>
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <span class="text-warning">&#9733;</span>
+              <span>Colríntose Doctor</span>
+            </div>
+            <div class="loyalty-badge">
+              Puntos: {{ (profile?.patient?.loyalty_points ?? 0) | number:'1.0-0' }}
+            </div>
+          </div>
+          <div class="qr-mini" *ngIf="qrDataUrl">
+            <img [src]="qrDataUrl" alt="QR" />
+          </div>
         </div>
-        <button cButton color="primary" type="button" (click)="refresh()" [disabled]="isLoading">
-          {{ isLoading ? 'Cargando…' : 'Refrescar' }}
+      </div>
+
+      <!-- Mi Información de Contacto -->
+      <div class="info-card">
+        <h5 class="info-card-title">Mi Información de Contacto</h5>
+        <div class="d-flex justify-content-between align-items-start">
+          <div class="flex-grow-1">
+            <div class="info-field">
+              <div class="info-label">Email</div>
+              <div class="info-value">{{ profile?.user?.email || '-' }}</div>
+            </div>
+            <div class="info-field">
+              <div class="info-label">Teléfono</div>
+              <div class="info-value">{{ profile?.staff_member?.phone || profile?.user?.phone || '-' }}</div>
+            </div>
+            <div class="info-field">
+              <div class="info-label">Fecha de Nacimiento</div>
+              <div class="info-value">{{ profile?.patient?.birthday || '-' }}</div>
+            </div>
+          </div>
+          <div class="qr-mini" *ngIf="qrDataUrl">
+            <img [src]="qrDataUrl" alt="QR" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Mi información -->
+      <div class="info-card">
+        <h5 class="info-card-title">Mi información</h5>
+        <div class="d-flex justify-content-between align-items-start">
+          <div class="flex-grow-1">
+            <div class="info-field">
+              <div class="info-label">Email</div>
+              <div class="info-value">{{ profile?.user?.email || '-' }}</div>
+            </div>
+            <div class="info-field">
+              <div class="info-label">Fecha de Nacimiento</div>
+              <div class="info-value">{{ profile?.patient?.birthday || '-' }}</div>
+            </div>
+            <div class="info-field">
+              <div class="info-label">Miembro Desde</div>
+              <div class="info-value">{{ profile?.user?.created_at ? (profile?.user?.created_at | date:'d MMMM yyyy') : '-' }}</div>
+            </div>
+            <div class="info-field">
+              <div class="info-label">Puntos acumulados</div>
+              <div class="info-value">{{ (profile?.patient?.loyalty_points ?? 0) | number:'1.0-0' }}</div>
+            </div>
+          </div>
+          <div *ngIf="profile?.user?.avatar_url || profile?.user?.photo" class="profile-mini-photo">
+            <img [src]="profile?.user?.avatar_url || profile?.user?.photo" alt="Foto" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Permisos -->
+      <div class="info-card" *ngIf="permissions.length > 0">
+        <h5 class="info-card-title">Permisos</h5>
+        <div class="d-flex flex-wrap gap-1">
+          <ng-container *ngFor="let p of permissions">
+            <span class="badge bg-secondary me-1">{{ p }}</span>
+          </ng-container>
+        </div>
+      </div>
+
+      <!-- Inventario Grow -->
+      <div class="info-card" *ngIf="hasGrowAccess">
+        <h5 class="info-card-title">Inventario Grow</h5>
+        <div class="small">
+          <p class="mb-2">Archivo: <strong>{{ growInventoryFile }}</strong></p>
+          <a [href]="growInventoryUrl" target="_blank" rel="noreferrer" class="btn btn-sm btn-outline-primary">Descargar Inventario</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══ Extra Sections Below Grid ═══ -->
+  <div *ngIf="!isLoading && profile" class="profile-extras">
+
+    <!-- PDFs para paciente -->
+    <div *ngIf="hasPatient" class="info-card">
+      <h5 class="info-card-title">Documentos (PDF)</h5>
+
+      <div class="d-flex flex-wrap gap-2 mb-3">
+        <button cButton color="primary" size="sm" type="button" (click)="openPatientDataSheetPdf(false)">
+          Ver / Imprimir Ficha de Datos
         </button>
-      </c-card-header>
-      <c-card-body>
-        <c-row>
-          <c-col xs="12">
-            <div class="profile-header text-center py-4">
-              <div class="avatar mb-3 d-inline-block position-relative" style="width:120px;height:120px;">
-                <img [src]="profile?.user?.avatar_url || profile?.user?.photo || 'assets/img/default-avatar.svg'" alt="Avatar" class="rounded-circle" style="width:120px;height:120px;object-fit:cover;border:4px solid var(--cui-bg);" />
-                <div *ngIf="showEdit" class="position-absolute" style="right:0;bottom:0;">
-                  <label class="btn btn-sm btn-outline-secondary mb-0">
-                    Cambiar
-                    <input type="file" (change)="onPhotoChange($event)" accept="image/*" hidden />
-                  </label>
-                </div>
-              </div>
+        <button cButton color="secondary" size="sm" type="button" (click)="openPatientDataSheetPdf(true)">
+          Descargar Ficha de Datos
+        </button>
+      </div>
 
-              <ng-container *ngIf="!showEdit; else editHeader">
-                <h2 class="mb-1">{{ profile?.user?.name || 'Nombre' }}</h2>
-                <div class="small text-body-secondary mb-2">{{ profile?.staff_member?.title || profile?.user?.role || '' }}</div>
-                <div class="mb-2">
-                  <span *ngIf="profile?.user?.is_super_admin" class="badge bg-warning text-dark">Super Admin</span>
-                </div>
-                <div>
-                  <button cButton color="primary" type="button" (click)="openSlide()">Editar Perfil</button>
-                </div>
-              </ng-container>
+      <div class="mb-2 fw-semibold">Fichas de Asistencia</div>
+      <div *ngIf="attendanceSheetsLoading" class="text-body-secondary small">Cargando fichas…</div>
+      <div *ngIf="attendanceSheetsError" class="text-danger small">{{ attendanceSheetsError }}</div>
 
-              <ng-template #editHeader>
-                <form [formGroup]="updateForm" class="d-inline-block w-100">
-                  <input formControlName="name" class="form-control form-control-lg mb-2 text-center" />
-                  <input formControlName="email" class="form-control mb-2 text-center" />
-                  <div class="d-flex justify-content-center mb-2">
-                    <button cButton color="success" type="button" (click)="saveProfile()" [disabled]="isSaving">Guardar</button>
-                    <button cButton color="secondary" type="button" class="ms-2" (click)="cancelEdit()">Cancelar</button>
-                    <button *ngIf="selectedPhoto" cButton color="info" type="button" class="ms-2" (click)="uploadPhoto()">Subir Foto</button>
-                  </div>
-                </form>
-              </ng-template>
+      <div *ngIf="!attendanceSheetsLoading && (!attendanceSheets || attendanceSheets.length === 0)" class="text-body-secondary small">
+        No hay fichas de asistencia.
+      </div>
+
+      <div *ngIf="attendanceSheets && attendanceSheets.length > 0" class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+          <thead>
+            <tr>
+              <th>Servicio</th>
+              <th>Sesiones</th>
+              <th>Creada</th>
+              <th style="width: 160px;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let s of attendanceSheets">
+              <td>{{ s.service_name || '-' }}</td>
+              <td>{{ s.total_sessions || 0 }}</td>
+              <td>{{ s.created_at || '-' }}</td>
+              <td>
+                <div class="btn-group btn-group-sm">
+                  <button cButton color="primary" size="sm" type="button" (click)="openAttendanceSheetPdf(s.id, false)">
+                    Ver / Imprimir
+                  </button>
+                  <button cButton color="secondary" size="sm" type="button" (click)="openAttendanceSheetPdf(s.id, true)">
+                    Descargar
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Nuevo Paciente (admin) -->
+    <div class="mb-3" *ngIf="isAdminOrSuperAdmin">
+      <button cButton color="primary" type="button" (click)="openNewPatientModal()">+ Nuevo Paciente</button>
+    </div>
+
+    <!-- Staff Calendar -->
+    <div *ngIf="profile?.staff_member" class="info-card">
+      <h5 class="info-card-title">Calendario de Citas</h5>
+      <div class="d-flex gap-2 align-items-center mb-3">
+        <button cButton color="light" size="sm" type="button" (click)="prevMonth()">&lt;</button>
+        <div class="fw-semibold">{{ currentDate | date:'MMMM yyyy' }}</div>
+        <button cButton color="light" size="sm" type="button" (click)="nextMonth()">&gt;</button>
+      </div>
+
+      <div class="appointments-calendar">
+        <div class="calendar-grid">
+          <div *ngFor="let d of weekDays" class="calendar-weekday">{{ d }}</div>
+          <div *ngFor="let day of calendarDays" class="calendar-day"
+               [class.other-month]="!day.isCurrentMonth"
+               [class.today]="day.isToday"
+               (click)="onDayClick(day)">
+            <div class="day-number">{{ day.dayNumber }}</div>
+            <div class="small text-muted">
+              <span *ngIf="day.appointments.length">{{ day.appointments.length }} cita(s)</span>
             </div>
+          </div>
+        </div>
+      </div>
 
-            <!-- Slide-over panel (Option C) -->
-            <div *ngIf="slideOpen" class="slide-over-backdrop" (click)="closeSlide()">
-              <div class="slide-over" (click)="$event.stopPropagation()">
-                <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
-                  <h5 class="mb-0">Editar Perfil</h5>
-                  <button class="btn btn-sm btn-light" (click)="closeSlide()">✕</button>
-                </div>
-                <div class="p-3">
-                  <form [formGroup]="updateForm">
-                    <div class="mb-3">
-                      <label class="form-label">Nombre</label>
-                      <input formControlName="name" class="form-control" />
-                    </div>
-                    <div class="mb-3">
-                      <label class="form-label">Email</label>
-                      <input formControlName="email" class="form-control" />
-                    </div>
-                    <div class="mb-3">
-                      <label class="form-label">Teléfono</label>
-                      <input formControlName="phone" [formControl]="updateFormPhone.controls.phone" class="form-control" />
-                    </div>
-                    <div class="mb-3">
-                      <label class="form-label">Foto</label>
-                      <input type="file" (change)="onPhotoChange($event)" accept="image/*" class="form-control" />
-                    </div>
-                    <div class="d-flex gap-2">
-                      <button cButton color="success" type="button" (click)="saveProfile()" [disabled]="isSaving">Guardar</button>
-                      <button cButton color="secondary" type="button" (click)="closeSlide()">Cancelar</button>
-                      <button *ngIf="selectedPhoto" cButton color="info" type="button" (click)="uploadPhoto()">Subir Foto</button>
-                    </div>
-                  </form>
-                </div>
-              </div>
+      <div *ngIf="selectedDate" class="mt-3">
+        <div class="small text-body-secondary mb-2">Horarios para {{ selectedDate }}</div>
+        <div *ngFor="let slot of daySlots" class="mb-1">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>{{ slot.time }}</div>
+            <div>
+              <span *ngIf="slot.available" class="badge bg-success">Disponible</span>
+              <span *ngIf="!slot.available" class="badge bg-secondary">Ocupado</span>
             </div>
-          </c-col>
-        </c-row>
+          </div>
+          <div *ngIf="!slot.available && slot.appointment" class="small text-muted">
+            {{ slot.appointment.patient_name || ('Paciente #' + slot.appointment.patient_id) }}
+          </div>
+        </div>
+      </div>
+    </div>
 
-        <c-row class="g-3">
-          <c-col md="6">
-            <c-card class="mb-3">
-              <c-card-body>
-                <h5>Información de Contacto</h5>
-                <div class="mt-3 small text-muted">
-                  <div><strong>Email:</strong> {{ profile?.user?.email || '-' }}</div>
-                  <div><strong>Teléfono:</strong> {{ profile?.staff_member?.phone || profile?.user?.phone || '-' }}</div>
-                  <div><strong>Miembro Desde:</strong> {{ profile?.user?.created_at ? (profile?.user?.created_at | date:'d MMMM yyyy') : '-' }}</div>
-                </div>
-              </c-card-body>
-            </c-card>
-            
-            <c-card *ngIf="hasGrowAccess" class="mb-3">
-              <c-card-body>
-                <h5>Inventario Grow</h5>
-                <div class="mt-2 small">
-                  <p class="mb-2">Archivo: <strong>{{ growInventoryFile }}</strong></p>
-                  <a [href]="growInventoryUrl" target="_blank" rel="noreferrer" class="btn btn-sm btn-outline-primary">Descargar Inventario</a>
-                </div>
-              </c-card-body>
-            </c-card>
-          </c-col>
-          <c-col md="6">
-            <c-card class="mb-3">
-              <c-card-body>
-                <h5>Permisos</h5>
-                <div class="mt-3">
-                  <ng-container *ngFor="let p of permissions">
-                    <span class="badge bg-secondary me-1">{{ p }}</span>
-                  </ng-container>
-                </div>
-              </c-card-body>
-            </c-card>
+    <!-- Admin: Puntos por artículo -->
+    <div *ngIf="isAdminOrSuperAdmin" class="info-card">
+      <h5 class="info-card-title">Puntos por artículo</h5>
+      <div class="small text-body-secondary mb-2">Configura cuántos puntos gana el cliente por cada artículo vendido.</div>
+      <form [formGroup]="loyaltyConfigForm">
+        <div class="mb-2">
+          <label class="form-label">Puntos por artículo</label>
+          <input type="number" min="0" class="form-control" formControlName="points_per_item" />
+          <div *ngIf="loyaltyConfigForm.controls.points_per_item.touched && loyaltyConfigForm.controls.points_per_item.invalid"
+               class="text-danger small mt-1">
+            Ingrese un número válido (&gt;= 0).
+          </div>
+        </div>
+        <button cButton color="success" type="button" (click)="saveLoyaltyConfig()" [disabled]="isSavingLoyalty">Guardar</button>
+      </form>
+    </div>
 
-            <c-card class="mb-3">
-              <c-card-body>
-                <h5>{{ qrTitle }}</h5>
-                <div *ngIf="hasPatient" class="small text-body-secondary">Muéstralo en el TPV para cargar tus datos de facturación y acumular puntos.</div>
-                <div *ngIf="hasPatient" class="mt-2 fw-semibold">Puntos acumulados: {{ profile?.patient?.loyalty_points ?? 0 }}</div>
-                <div class="text-center mt-3">
-                  <div *ngIf="isLoadingQr" class="text-muted">Cargando QR…</div>
-                  <div *ngIf="qrDataUrl">
-                    <img [src]="qrDataUrl" [attr.width]="qrSize" [attr.height]="qrSize" alt="QR" style="max-width:100%;height:auto;" />
-                    <div class="mt-2 small text-muted">{{ qrCodeText }}</div>
-                    <div class="mt-2">
-                      <button cButton color="primary" type="button" (click)="copyQrCode()">Copiar código</button>
-                      <button cButton color="secondary" type="button" class="ms-2" (click)="downloadQr()">Descargar</button>
-                      <button cButton color="info" type="button" class="ms-2" (click)="refreshQr()">Actualizar</button>
-                    </div>
-                  </div>
-                  <div *ngIf="!qrDataUrl && !isLoadingQr" class="text-muted">No hay QR disponible</div>
-                </div>
-              </c-card-body>
-            </c-card>
+    <!-- Actividad Reciente -->
+    <div class="info-card">
+      <h5 class="info-card-title">Actividad Reciente</h5>
+      <div>
+        <div *ngFor="let a of recent_activity" class="activity-item">
+          <div>{{ a.text }}</div>
+          <div class="text-body-secondary small">{{ a.time_ago }}</div>
+        </div>
+        <div *ngIf="!recent_activity || recent_activity.length === 0" class="text-body-secondary py-2">
+          Sin actividad reciente
+        </div>
+      </div>
+    </div>
 
-            <c-card *ngIf="isAdminOrSuperAdmin" class="mb-3">
-              <c-card-body>
-                <h5>Puntos por artÃ­culo</h5>
-                <div class="small text-body-secondary">Configura cuÃ¡ntos puntos gana el cliente por cada artÃ­culo vendido.</div>
-                <form [formGroup]="loyaltyConfigForm" class="mt-3">
-                  <div class="mb-2">
-                    <label class="form-label">Puntos por artÃ­culo</label>
-                    <input type="number" min="0" class="form-control" formControlName="points_per_item" />
-                    <div *ngIf="loyaltyConfigForm.controls.points_per_item.touched && loyaltyConfigForm.controls.points_per_item.invalid" class="text-danger small mt-1">
-                      Ingrese un nÃºmero vÃ¡lido (&gt;= 0).
-                    </div>
-                  </div>
-                  <button cButton color="success" type="button" (click)="saveLoyaltyConfig()" [disabled]="isSavingLoyalty">Guardar</button>
-                </form>
-              </c-card-body>
-            </c-card>
-          </c-col>
-        </c-row>
+  </div>
 
-        <c-row>
-          <c-col xs="12">
-            <c-card>
-              <c-card-body>
-                <h5>Actividad Reciente</h5>
-                <div class="mt-3">
-                  <ul class="list-unstyled">
-                    <li *ngFor="let a of recent_activity" class="py-2 border-bottom d-flex justify-content-between">
-                      <div>{{ a.text }}</div>
-                      <div class="text-body-secondary small">{{ a.time_ago }}</div>
-                    </li>
-                    <li *ngIf="!recent_activity || recent_activity.length === 0" class="text-body-secondary py-2">Sin actividad reciente</li>
-                  </ul>
-                </div>
-              </c-card-body>
-            </c-card>
-          </c-col>
-        </c-row>
+  <!-- Nuevo Paciente Modal -->
+  <c-modal id="newPatientModal" [visible]="newPatientVisible" (visibleChange)="newPatientVisible = $event">
+    <c-modal-header>
+      <h5 cModalTitle>Agregar Nuevo Paciente</h5>
+    </c-modal-header>
+    <c-modal-body>
+      <form [formGroup]="newPatientForm">
+        <div class="mb-2">
+          <label class="form-label">Nombre Completo</label>
+          <input formControlName="name" class="form-control" />
+        </div>
+        <div class="mb-2">
+          <label class="form-label">E-mail</label>
+          <input formControlName="email" class="form-control" />
+        </div>
+        <div class="row g-2">
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Fecha de Nacimiento</label>
+            <input formControlName="birthday" type="date" class="form-control" />
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Edad</label>
+            <input formControlName="age" class="form-control" />
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Estado Civil</label>
+            <input formControlName="marital_status" class="form-control" />
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Nombre del Esposo</label>
+            <input formControlName="spouse_name" class="form-control" />
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Lugar de Nacimiento</label>
+            <input formControlName="place_of_birth" class="form-control" />
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Nacionalidad</label>
+            <input formControlName="nationality" class="form-control" />
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">DPI</label>
+            <input formControlName="dpi" class="form-control" />
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Tipo de Sangre</label>
+            <input formControlName="blood_type" class="form-control" />
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Profesión</label>
+            <input formControlName="profession" class="form-control" />
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Lugar de Trabajo</label>
+            <input formControlName="workplace" class="form-control" />
+          </div>
+          <div class="col-12 mb-2">
+            <label class="form-label">Dirección de Domicilio</label>
+            <input formControlName="address" class="form-control" />
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">No. De Teléfono de casa</label>
+            <input formControlName="home_phone" class="form-control" />
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">No. De Celular</label>
+            <input formControlName="mobile_phone" class="form-control" />
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Referido Por</label>
+            <input formControlName="referred_by" class="form-control" />
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Motivo de la Consulta</label>
+            <input formControlName="reason_for_consultation" class="form-control" />
+          </div>
+          <div class="col-12 mb-2">
+            <label class="form-label">Emitir Factura a Nombre de</label>
+            <input formControlName="invoice_name" class="form-control" />
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">NIT</label>
+            <input formControlName="nit" class="form-control" />
+          </div>
+        </div>
+      </form>
+    </c-modal-body>
+    <c-modal-footer>
+      <button cButton color="success" type="button" (click)="createNewPatient()" [disabled]="isSavingNewPatient">Crear Paciente</button>
+      <button cButton color="secondary" type="button" (click)="closeNewPatientModal()">Cancelar</button>
+    </c-modal-footer>
+  </c-modal>
 
-      </c-card-body>
-    </c-card>
-  </c-col>
-</c-row>
+  <!-- ═══ Slide-over Panel: Editar Perfil ═══ -->
+  <div *ngIf="slideOpen" class="slide-over-backdrop" (click)="closeSlide()">
+    <div class="slide-over" (click)="$event.stopPropagation()">
+
+      <!-- Header -->
+      <div class="slide-header">
+        <h5>Editar Perfil</h5>
+        <button class="slide-close-btn" (click)="closeSlide()" type="button">&#10005;</button>
+      </div>
+
+      <!-- Body -->
+      <div class="slide-body">
+        <form [formGroup]="updateForm">
+
+          <!-- Basic Profile Fields -->
+          <div class="mb-3">
+            <label class="form-label">Nombre</label>
+            <input formControlName="name" class="form-control" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Email</label>
+            <input formControlName="email" class="form-control" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Teléfono</label>
+            <input [formControl]="updateFormPhone.controls.phone" class="form-control" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Foto</label>
+            <input type="file" (change)="onPhotoChange($event)" accept="image/*" class="form-control" />
+          </div>
+
+          <!-- Photo Preview -->
+          <div class="d-flex gap-2 flex-wrap mb-3">
+            <button cButton color="success" type="button" (click)="saveProfile()" [disabled]="isSaving">Guardar</button>
+            <button cButton color="secondary" type="button" (click)="closeSlide()">Cancelar</button>
+            <button *ngIf="selectedPhoto" cButton color="info" type="button" (click)="uploadPhoto()">Subir Foto</button>
+          </div>
+
+          <!-- Current Photo -->
+          <div *ngIf="photoPreviewUrl || profile?.user?.avatar_url || profile?.user?.photo" class="slide-current-photo">
+            <div class="slide-photo-preview">
+              <img [src]="photoPreviewUrl || profile?.user?.avatar_url || profile?.user?.photo" alt="Foto" />
+            </div>
+          </div>
+
+          <div class="slide-current-photo" *ngIf="profile?.user?.avatar_url || profile?.user?.photo">
+            <div class="slide-current-photo-label">Foto de Perfil</div>
+            <div class="slide-photo-preview">
+              <img [src]="profile?.user?.avatar_url || profile?.user?.photo" alt="Foto de perfil" />
+            </div>
+          </div>
+
+        </form>
+
+        <!-- Patient Data Section -->
+        <div class="slide-section-title">Ficha de datos pacientes</div>
+        <form [formGroup]="patientForm">
+          <div class="row g-2">
+            <div class="col-md-6 mb-2">
+              <label class="form-label">Fecha de nacimiento</label>
+              <input formControlName="birthday" type="date" class="form-control" />
+            </div>
+            <div class="col-md-6 mb-2">
+              <label class="form-label">NIT / ID</label>
+              <input formControlName="nit" class="form-control" />
+            </div>
+            <div class="col-md-4 mb-2">
+              <label class="form-label">Teléfono (paciente)</label>
+              <input formControlName="phone" class="form-control" />
+            </div>
+            <div class="col-md-4 mb-2">
+              <label class="form-label">Dirección</label>
+              <input formControlName="address" class="form-control" />
+            </div>
+            <div class="col-md-2 mb-2">
+              <label class="form-label">Peso (kg)</label>
+              <input formControlName="weight" type="text" class="form-control" />
+            </div>
+            <div class="col-md-2 mb-2">
+              <label class="form-label">Altura (cm)</label>
+              <input formControlName="height" type="text" class="form-control" />
+            </div>
+            <div class="col-md-4 mb-2">
+              <label class="form-label">Tipo de piel</label>
+              <input formControlName="skin_type" class="form-control" />
+            </div>
+            <div class="col-md-4 mb-2">
+              <label class="form-label">Grupo sanguíneo</label>
+              <input formControlName="blood_type" class="form-control" />
+            </div>
+            <div class="col-md-4 mb-2">
+              <label class="form-label">Ocupación</label>
+              <input formControlName="occupation" class="form-control" />
+            </div>
+            <div class="col-12 mb-2">
+              <label class="form-label">Alergias</label>
+              <input formControlName="allergies" class="form-control" />
+            </div>
+            <div class="col-12 mb-2">
+              <label class="form-label">Medicamentos / Tratamientos</label>
+              <input formControlName="medications" class="form-control" />
+            </div>
+            <div class="col-12 mb-2">
+              <label class="form-label">Antecedentes / Condiciones crónicas</label>
+              <input formControlName="chronic_conditions" class="form-control" />
+            </div>
+            <div class="col-md-6 mb-2">
+              <label class="form-label">Contacto de emergencia</label>
+              <input formControlName="emergency_contact_name" class="form-control" />
+            </div>
+            <div class="col-md-6 mb-2">
+              <label class="form-label">Teléfono de emergencia</label>
+              <input formControlName="emergency_contact_phone" class="form-control" />
+            </div>
+            <div class="col-md-3 mb-2">
+              <label class="form-label">Embarazada</label>
+              <select formControlName="pregnant" class="form-select">
+                <option [ngValue]="false">No</option>
+                <option [ngValue]="true">Sí</option>
+              </select>
+            </div>
+            <div class="col-md-3 mb-2">
+              <label class="form-label">Fuma</label>
+              <select formControlName="smoking" class="form-select">
+                <option [ngValue]="false">No</option>
+                <option [ngValue]="true">Sí</option>
+              </select>
+            </div>
+            <div class="col-12 mb-2">
+              <label class="form-label">Notas clínicas / Comentarios</label>
+              <textarea formControlName="notes" class="form-control" rows="3"></textarea>
+            </div>
+          </div>
+        </form>
+
+        <!-- Ficha Extras Section -->
+        <div class="slide-section-title">Ficha (Información adicional)</div>
+        <form [formGroup]="fichaExtras">
+          <div class="row g-2">
+            <div class="col-md-4 mb-2">
+              <label class="form-label">Estado civil</label>
+              <input formControlName="marital_status" class="form-control" />
+            </div>
+            <div class="col-md-4 mb-2">
+              <label class="form-label">Nombre del cónyuge</label>
+              <input formControlName="spouse_name" class="form-control" />
+            </div>
+            <div class="col-md-2 mb-2">
+              <label class="form-label">Edad</label>
+              <input formControlName="age" class="form-control" />
+            </div>
+            <div class="col-md-2 mb-2">
+              <label class="form-label">Lugar de nacimiento</label>
+              <input formControlName="place_of_birth" class="form-control" />
+            </div>
+            <div class="col-md-4 mb-2">
+              <label class="form-label">Nacionalidad</label>
+              <input formControlName="nationality" class="form-control" />
+            </div>
+            <div class="col-md-4 mb-2">
+              <label class="form-label">DPI / Documento</label>
+              <input formControlName="dpi" class="form-control" />
+            </div>
+            <div class="col-md-4 mb-2">
+              <label class="form-label">Tipo de sangre</label>
+              <input [formControl]="patientForm.controls.blood_type" class="form-control" />
+            </div>
+            <div class="col-md-6 mb-2">
+              <label class="form-label">Profesión</label>
+              <input formControlName="profession" class="form-control" />
+            </div>
+            <div class="col-md-6 mb-2">
+              <label class="form-label">Lugar de trabajo</label>
+              <input formControlName="workplace" class="form-control" />
+            </div>
+            <div class="col-md-6 mb-2">
+              <label class="form-label">Teléfono de casa</label>
+              <input formControlName="home_phone" class="form-control" />
+            </div>
+            <div class="col-md-6 mb-2">
+              <label class="form-label">No. de celular</label>
+              <input formControlName="mobile_phone" class="form-control" />
+            </div>
+            <div class="col-md-6 mb-2">
+              <label class="form-label">Referido por</label>
+              <input formControlName="referred_by" class="form-control" />
+            </div>
+            <div class="col-md-6 mb-2">
+              <label class="form-label">Motivo de la consulta</label>
+              <input formControlName="reason_for_consultation" class="form-control" />
+            </div>
+            <div class="col-12 mb-2">
+              <label class="form-label">Emitir factura a nombre de</label>
+              <input formControlName="invoice_name" class="form-control" />
+            </div>
+          </div>
+        </form>
+
+        <!-- Bottom Save Actions -->
+        <div class="slide-actions">
+          <button cButton color="success" type="button" (click)="saveProfile()" [disabled]="isSaving">Guardar Cambios</button>
+          <button cButton color="secondary" type="button" (click)="closeSlide()">Cancelar</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>

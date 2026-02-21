@@ -14,6 +14,8 @@ export interface Patient {
   birthday?: string | null;
   address?: string | null;
   nit?: string | null;
+  loyalty_points?: number | null;
+  qr_code?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -25,6 +27,20 @@ export interface CreatePatientRequest {
   birthday?: string;
   address?: string;
   nit?: string;
+  marital_status?: string;
+  spouse_name?: string;
+  age?: number | string;
+  place_of_birth?: string;
+  nationality?: string;
+  dpi?: string;
+  blood_type?: string;
+  profession?: string;
+  workplace?: string;
+  home_phone?: string;
+  mobile_phone?: string;
+  referred_by?: string;
+  reason_for_consultation?: string;
+  invoice_name?: string;
 }
 
 export interface UpdatePatientRequest {
@@ -34,6 +50,20 @@ export interface UpdatePatientRequest {
   birthday?: string | null;
   address?: string | null;
   nit?: string | null;
+  marital_status?: string | null;
+  spouse_name?: string | null;
+  age?: number | string | null;
+  place_of_birth?: string | null;
+  nationality?: string | null;
+  dpi?: string | null;
+  blood_type?: string | null;
+  profession?: string | null;
+  workplace?: string | null;
+  home_phone?: string | null;
+  mobile_phone?: string | null;
+  referred_by?: string | null;
+  reason_for_consultation?: string | null;
+  invoice_name?: string | null;
 }
 
 export interface PatientsListQuery {
@@ -131,5 +161,12 @@ export class PatientsService {
         body: { photo_base64, type }
       })
       .pipe(map(unwrapApiEnvelope));
+  }
+
+  dataSheetPdf(id: Id, download = false): Observable<Blob> {
+    return this.#api.requestBlob(`/patients/${id}/ficha-datos-pdf`, {
+      method: 'GET',
+      params: download ? { download: 1 } : undefined
+    });
   }
 }

@@ -16,12 +16,17 @@ class PatientsController {
         require_once __DIR__ . '/../Core/Mailer.php';
         require_once __DIR__ . '/../Core/Audit.php';
         require_once __DIR__ . '/../Core/FieldEncryption.php';
+        require_once __DIR__ . '/../Core/Pdf.php';
     }
 
     public function handle($id = null, $action = null) {
         self::initCore();
         $method = $_SERVER['REQUEST_METHOD'];
         $input = Request::body();
+
+        if ($id && $method === 'GET' && in_array($action, ['data-sheet-pdf', 'ficha-datos-pdf'], true)) {
+            return $this->dataSheetPdf($id);
+        }
 
         // Actions
         if ($id && $action === 'qr' && $method === 'GET') {
@@ -61,6 +66,12 @@ class PatientsController {
         }
 
         \App\Core\Response::error('Método no permitido', 405);
+    }
+
+    private function normalizeRole($role): string
+    {
+        $r = strtolower((string)($role ?? ''));
+        return $r === 'paciente' ? 'patient' : $r;
     }
 
     private function index() {
@@ -138,8 +149,10 @@ class PatientsController {
         $patient = $db->fetchOne('SELECT * FROM patients WHERE id = ?', [$id]);
         if (!$patient) { \App\Core\Response::notFound('Paciente no encontrado'); }
 
+        $role = $this->normalizeRole($user['role'] ?? null);
+
         // Patients can only access their own record
-        if (($user['role'] ?? null) === 'patient') {
+        if ($role === 'patient') {
             $owns = (isset($patient['user_id']) && intval($patient['user_id']) === intval($user['user_id'] ?? 0))
                 || (!empty($patient['email']) && ($user['email'] ?? null) === $patient['email']);
             if (!$owns) {
@@ -149,7 +162,7 @@ class PatientsController {
             \App\Core\Auth::requireAnyRole(['superadmin', 'admin', 'doctor', 'staff'], 'No tienes permisos para ver pacientes');
         }
 
-        if ($user['role'] === 'doctor') {
+        if ($role === 'doctor') {
             $staffMember = $db->fetchOne('SELECT id FROM staff_members WHERE user_id = ?', [$user['user_id']]);
             if ($staffMember) {
                 $hasAccess = $db->fetchOne('SELECT id FROM appointments WHERE patient_id = ? AND staff_member_id = ? LIMIT 1', [$id, $staffMember['id']]);
@@ -175,6 +188,122 @@ class PatientsController {
         }
 
         \App\Core\Response::success($patient);
+    }
+
+    private function dataSheetPdf($id)
+    {
+        \App\Core\Auth::requireAuth();
+        $user = \App\Core\Auth::getCurrentUser();
+        $db = \App\Core\Database::getInstance();
+
+        $patient = $db->fetchOne('SELECT * FROM patients WHERE id = ? LIMIT 1', [intval($id)]);
+        if (!$patient) {
+            \App\Core\Response::notFound('Paciente no encontrado');
+        }
+
+        $role = $this->normalizeRole($user['role'] ?? null);
+
+        if ($role === 'patient') {
+            $owns = (isset($patient['user_id']) && intval($patient['user_id']) === intval($user['user_id'] ?? 0))
+                || (!empty($patient['email']) && ($user['email'] ?? null) === $patient['email']);
+            if (!$owns) {
+                \App\Core\Response::forbidden('No tienes acceso a este paciente');
+            }
+        } else {
+            \App\Core\Auth::requireAnyRole(['superadmin', 'admin', 'doctor', 'staff'], 'No tienes permisos para ver pacientes');
+        }
+
+        if ($role === 'doctor') {
+            $staffMember = $db->fetchOne('SELECT id FROM staff_members WHERE user_id = ?', [intval($user['user_id'] ?? 0)]);
+            if ($staffMember) {
+                $hasAccess = $db->fetchOne(
+                    'SELECT id FROM appointments WHERE patient_id = ? AND staff_member_id = ? LIMIT 1',
+                    [intval($id), intval($staffMember['id'])]
+                );
+                if (!$hasAccess) {
+                    \App\Core\Response::forbidden('No tienes acceso a este paciente');
+                }
+            } else {
+                \App\Core\Response::forbidden('No tienes acceso a este paciente');
+            }
+        }
+
+        // Desencriptar email y phone si existen
+        if (!empty($patient['email_encrypted'])) {
+            try {
+                $patient['email'] = \App\Core\FieldEncryption::decryptValue($patient['email_encrypted']);
+            } catch (\Exception $e) {
+            }
+        }
+
+        if (!empty($patient['phone_encrypted'])) {
+            try {
+                $patient['phone'] = \App\Core\FieldEncryption::decryptValue($patient['phone_encrypted']);
+            } catch (\Exception $e) {
+            }
+        }
+
+        $patientName = (string)($patient['name'] ?? 'Paciente');
+
+        $fields = [
+            'Nombre' => $patient['name'] ?? '',
+            'Email' => $patient['email'] ?? '',
+            'Teléfono' => $patient['phone'] ?? '',
+            'Teléfono móvil' => $patient['mobile_phone'] ?? '',
+            'Teléfono casa' => $patient['home_phone'] ?? '',
+            'Fecha de nacimiento' => $patient['birthday'] ?? '',
+            'Edad' => $patient['age'] ?? '',
+            'Estado civil' => $patient['marital_status'] ?? '',
+            'Cónyuge' => $patient['spouse_name'] ?? '',
+            'Lugar de nacimiento' => $patient['place_of_birth'] ?? '',
+            'Nacionalidad' => $patient['nationality'] ?? '',
+            'DPI' => $patient['dpi'] ?? '',
+            'Tipo de sangre' => $patient['blood_type'] ?? '',
+            'Profesión' => $patient['profession'] ?? '',
+            'Lugar de trabajo' => $patient['workplace'] ?? '',
+            'Referido por' => $patient['referred_by'] ?? '',
+            'Motivo de consulta' => $patient['reason_for_consultation'] ?? '',
+            'Dirección' => $patient['address'] ?? '',
+            'Nombre para factura' => $patient['invoice_name'] ?? '',
+            'NIT' => $patient['nit'] ?? '',
+        ];
+
+        $rows = '';
+        foreach ($fields as $label => $value) {
+            $rows .= '<tr>'
+                . '<td class="label">' . htmlspecialchars((string)$label) . '</td>'
+                . '<td class="value">' . htmlspecialchars((string)$value) . '</td>'
+                . '</tr>';
+        }
+
+        $html = '<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Ficha de Datos</title>
+  <style>
+    body{font-family:Arial, sans-serif;font-size:12px;color:#111;margin:24px;}
+    h1{font-size:18px;margin:0 0 10px 0;letter-spacing:0.5px;}
+    .meta{margin:0 0 12px 0;color:#333;}
+    table{width:100%;border-collapse:collapse;}
+    td{padding:6px 8px;border:1px solid #ddd;vertical-align:top;}
+    td.label{width:30%;background:#f3f3f3;font-weight:bold;}
+  </style>
+</head>
+<body>
+  <h1>FICHA DE DATOS DEL PACIENTE</h1>
+  <div class="meta"><strong>Paciente:</strong> ' . htmlspecialchars($patientName) . ' &nbsp; | &nbsp; <strong>Fecha:</strong> ' . htmlspecialchars(date('d/m/Y')) . '</div>
+  <table>
+    <tbody>
+      ' . $rows . '
+    </tbody>
+  </table>
+</body>
+</html>';
+
+        $download = isset($_GET['download']) && (string)$_GET['download'] === '1';
+        $filename = 'ficha_datos_' . $patientName . '_ID' . intval($patient['id'] ?? 0) . '.pdf';
+        \App\Core\Pdf::outputFromHtml($html, $filename, $download);
     }
 
     private function getQr($id)
@@ -228,20 +357,69 @@ class PatientsController {
             'name' => 'required|string|max:255',
             'email' => 'required|email|max:255',
             'phone' => 'nullable|string|max:20',
+            'mobile_phone' => 'nullable|string|max:20',
+            'home_phone' => 'nullable|string|max:20',
             'birthday' => 'nullable|date',
+            'age' => 'nullable|integer',
+            'marital_status' => 'nullable|string|max:50',
+            'spouse_name' => 'nullable|string|max:255',
+            'place_of_birth' => 'nullable|string|max:255',
+            'nationality' => 'nullable|string|max:100',
+            'dpi' => 'nullable|string|max:100',
+            'blood_type' => 'nullable|string|max:20',
+            'profession' => 'nullable|string|max:255',
+            'workplace' => 'nullable|string|max:255',
+            'referred_by' => 'nullable|string|max:255',
+            'reason_for_consultation' => 'nullable|string',
             'address' => 'nullable|string|max:500',
-            'nit' => 'nullable|string|max:100'
+            'invoice_name' => 'nullable|string|max:255',
+            'nit' => 'nullable|string|max:100',
+            'user_id' => 'nullable|integer'
         ]);
 
         try { $validator->validate(); } catch (\Exception $e) { \App\Core\Response::validationError([$e->getMessage()]); }
 
-        $existing = $db->fetchOne('SELECT id FROM patients WHERE email = ? AND id != ?', [$input['email'], $id]);
+        $existing = $db->fetchOne('SELECT id FROM patients WHERE email = ? LIMIT 1', [$input['email']]);
         if ($existing) { \App\Core\Response::error('El email ya está registrado', 422); }
 
         try {
-            try { $db->execute("ALTER TABLE patients ADD COLUMN IF NOT EXISTS nit VARCHAR(100) NULL", []); } catch (\Exception $e) {}
+            // MySQL compatibility: avoid `ADD COLUMN IF NOT EXISTS` (not supported in many versions).
+            // Also ensure encrypted fields are stored as BLOBs (Crypto::encryptBytes includes raw bytes).
+            try { $db->execute("ALTER TABLE patients ADD COLUMN nit VARCHAR(100) NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients ADD COLUMN marital_status VARCHAR(50) NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients ADD COLUMN spouse_name VARCHAR(255) NULL", []); } catch (\Exception $e) {}
+
+            // Phase 3.2 encrypted columns (best-effort for DBs not migrated yet)
+            try { $db->execute("ALTER TABLE patients ADD COLUMN email_encrypted LONGBLOB NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients ADD COLUMN email_hash VARCHAR(64) NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients ADD COLUMN phone_encrypted LONGBLOB NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients ADD COLUMN phone_hash VARCHAR(64) NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients MODIFY COLUMN email_encrypted LONGBLOB NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients MODIFY COLUMN phone_encrypted LONGBLOB NULL", []); } catch (\Exception $e) {}
+
+            // Extra phones
+            try { $db->execute("ALTER TABLE patients ADD COLUMN mobile_phone VARCHAR(20) NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients ADD COLUMN mobile_phone_encrypted LONGBLOB NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients ADD COLUMN mobile_phone_hash VARCHAR(64) NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients ADD COLUMN home_phone VARCHAR(20) NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients ADD COLUMN home_phone_encrypted LONGBLOB NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients ADD COLUMN home_phone_hash VARCHAR(64) NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients MODIFY COLUMN mobile_phone_encrypted LONGBLOB NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients MODIFY COLUMN home_phone_encrypted LONGBLOB NULL", []); } catch (\Exception $e) {}
+
+            try { $db->execute("ALTER TABLE patients ADD COLUMN age INT NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients ADD COLUMN place_of_birth VARCHAR(255) NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients ADD COLUMN nationality VARCHAR(100) NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients ADD COLUMN dpi VARCHAR(100) NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients ADD COLUMN blood_type VARCHAR(20) NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients ADD COLUMN profession VARCHAR(255) NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients ADD COLUMN workplace VARCHAR(255) NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients ADD COLUMN referred_by VARCHAR(255) NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients ADD COLUMN reason_for_consultation TEXT NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients ADD COLUMN invoice_name VARCHAR(255) NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE patients ADD COLUMN user_id INT NULL", []); } catch (\Exception $e) {}
             
-            // Validar y encriptar email y phone
+            // Validar y encriptar email and phone/mobile/home phones
             $encryptedData = [];
             if (isset($input['email'])) {
                 if (!\App\Core\FieldEncryption::validateValue($input['email'], \App\Core\FieldEncryption::TYPE_EMAIL)) {
@@ -258,8 +436,25 @@ class PatientsController {
                 $encryptedData['phone_encrypted'] = \App\Core\FieldEncryption::encryptValue($input['phone']);
                 $encryptedData['phone_hash'] = \App\Core\FieldEncryption::hashValue($input['phone']);
             }
+
+            if (isset($input['mobile_phone'])) {
+                if (!\App\Core\FieldEncryption::validateValue($input['mobile_phone'], \App\Core\FieldEncryption::TYPE_PHONE)) {
+                    \App\Core\Response::validationError(['mobile_phone' => 'Teléfono móvil inválido']);
+                }
+                $encryptedData['mobile_phone_encrypted'] = \App\Core\FieldEncryption::encryptValue($input['mobile_phone']);
+                $encryptedData['mobile_phone_hash'] = \App\Core\FieldEncryption::hashValue($input['mobile_phone']);
+            }
+
+            if (isset($input['home_phone'])) {
+                if (!\App\Core\FieldEncryption::validateValue($input['home_phone'], \App\Core\FieldEncryption::TYPE_PHONE)) {
+                    \App\Core\Response::validationError(['home_phone' => 'Teléfono (casa) inválido']);
+                }
+                $encryptedData['home_phone_encrypted'] = \App\Core\FieldEncryption::encryptValue($input['home_phone']);
+                $encryptedData['home_phone_hash'] = \App\Core\FieldEncryption::hashValue($input['home_phone']);
+            }
             
-            $db->execute('INSERT INTO patients (name, email, email_encrypted, email_hash, phone, phone_encrypted, phone_hash, birthday, address, nit, loyalty_points, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW(), NOW())', [
+            $db->execute('INSERT INTO patients (user_id, name, email, email_encrypted, email_hash, phone, phone_encrypted, phone_hash, mobile_phone, mobile_phone_encrypted, mobile_phone_hash, home_phone, home_phone_encrypted, home_phone_hash, birthday, age, marital_status, spouse_name, place_of_birth, nationality, dpi, blood_type, profession, workplace, referred_by, reason_for_consultation, address, invoice_name, nit, loyalty_points, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW(), NOW())', [
+                $input['user_id'] ?? null,
                 $input['name'], 
                 $input['email'],
                 $encryptedData['email_encrypted'] ?? null,
@@ -267,8 +462,26 @@ class PatientsController {
                 $input['phone'] ?? null, 
                 $encryptedData['phone_encrypted'] ?? null,
                 $encryptedData['phone_hash'] ?? null,
+                $input['mobile_phone'] ?? null,
+                $encryptedData['mobile_phone_encrypted'] ?? null,
+                $encryptedData['mobile_phone_hash'] ?? null,
+                $input['home_phone'] ?? null,
+                $encryptedData['home_phone_encrypted'] ?? null,
+                $encryptedData['home_phone_hash'] ?? null,
                 $input['birthday'] ?? null, 
+                isset($input['age']) ? intval($input['age']) : null,
+                $input['marital_status'] ?? null,
+                $input['spouse_name'] ?? null,
+                $input['place_of_birth'] ?? null,
+                $input['nationality'] ?? null,
+                $input['dpi'] ?? null,
+                $input['blood_type'] ?? null,
+                $input['profession'] ?? null,
+                $input['workplace'] ?? null,
+                $input['referred_by'] ?? null,
+                $input['reason_for_consultation'] ?? null,
                 $input['address'] ?? null, 
+                $input['invoice_name'] ?? null,
                 $input['nit'] ?? null
             ]);
             $patientId = $db->lastInsertId();
@@ -298,7 +511,7 @@ class PatientsController {
         if (!$patient) { \App\Core\Response::notFound('Paciente no encontrado'); }
 
         $validator = \App\Core\Validator::make($input, [
-            'name' => 'string|max:255', 'email' => 'email|max:255', 'phone' => 'string|max:20', 'birthday' => 'date', 'address' => 'string|max:500', 'nit' => 'nullable|string|max:100'
+            'name' => 'string|max:255', 'email' => 'email|max:255', 'phone' => 'string|max:20', 'mobile_phone' => 'nullable|string|max:20', 'home_phone' => 'nullable|string|max:20', 'birthday' => 'date', 'age' => 'nullable|integer', 'marital_status' => 'nullable|string|max:50', 'spouse_name' => 'nullable|string|max:255', 'place_of_birth' => 'nullable|string|max:255', 'nationality' => 'nullable|string|max:100', 'dpi' => 'nullable|string|max:100', 'blood_type' => 'nullable|string|max:20', 'profession' => 'nullable|string|max:255', 'workplace' => 'nullable|string|max:255', 'referred_by' => 'nullable|string|max:255', 'reason_for_consultation' => 'nullable|string', 'address' => 'string|max:500', 'invoice_name' => 'nullable|string|max:255', 'nit' => 'nullable|string|max:100', 'user_id' => 'nullable|integer'
         ]);
 
         try { $validator->validate(); } catch (\Exception $e) { \App\Core\Response::validationError([$e->getMessage()]); }
@@ -331,9 +544,33 @@ class PatientsController {
                 $updates[] = 'phone_hash = ?';
                 $params[] = \App\Core\FieldEncryption::hashValue($input['phone']);
             }
+
+            if (isset($input['mobile_phone'])) {
+                if (!\App\Core\FieldEncryption::validateValue($input['mobile_phone'], \App\Core\FieldEncryption::TYPE_PHONE)) {
+                    \App\Core\Response::validationError(['mobile_phone' => 'Teléfono móvil inválido']);
+                }
+                $updates[] = 'mobile_phone = ?';
+                $params[] = $input['mobile_phone'];
+                $updates[] = 'mobile_phone_encrypted = ?';
+                $params[] = \App\Core\FieldEncryption::encryptValue($input['mobile_phone']);
+                $updates[] = 'mobile_phone_hash = ?';
+                $params[] = \App\Core\FieldEncryption::hashValue($input['mobile_phone']);
+            }
+
+            if (isset($input['home_phone'])) {
+                if (!\App\Core\FieldEncryption::validateValue($input['home_phone'], \App\Core\FieldEncryption::TYPE_PHONE)) {
+                    \App\Core\Response::validationError(['home_phone' => 'Teléfono (casa) inválido']);
+                }
+                $updates[] = 'home_phone = ?';
+                $params[] = $input['home_phone'];
+                $updates[] = 'home_phone_encrypted = ?';
+                $params[] = \App\Core\FieldEncryption::encryptValue($input['home_phone']);
+                $updates[] = 'home_phone_hash = ?';
+                $params[] = \App\Core\FieldEncryption::hashValue($input['home_phone']);
+            }
             
             // Procesar otros campos
-            foreach (['name','birthday','address','nit'] as $f) {
+            foreach (['name','birthday','address','nit','age','marital_status','spouse_name','place_of_birth','nationality','dpi','blood_type','profession','workplace','referred_by','reason_for_consultation','invoice_name','user_id'] as $f) {
                 if (isset($input[$f])) { $updates[] = "$f = ?"; $params[] = $input[$f]; }
             }
             

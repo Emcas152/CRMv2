@@ -21,6 +21,8 @@ import {
 } from '@coreui/angular';
 
 import { DocumentsService, DocumentItem } from '../../../core/services/documents.service';
+import { AuthService } from '../../../core/auth/auth.service';
+import { Patient, PatientsService } from '../../../core/services/patients.service';
 import { Id } from '../../../core/services/api.models';
 
 @Component({
@@ -46,6 +48,8 @@ import { Id } from '../../../core/services/api.models';
 export class DocumentsPageComponent implements OnInit {
   readonly #fb = inject(FormBuilder);
   readonly #docs = inject(DocumentsService);
+  readonly #auth = inject(AuthService);
+  readonly #patients = inject(PatientsService);
 
   isLoading = false;
   isUploading = false;
@@ -86,8 +90,19 @@ export class DocumentsPageComponent implements OnInit {
   replaceFileById: Partial<Record<string, File>> = {};
   titleById: Partial<Record<string, string>> = {};
 
+  // Auth/user context
+  me: any | null = null;
+  isPatient = false;
+  myPatientId = 0;
+
+  // Staff-only patient selection
+  selectedPatient: Patient | null = null;
+  patientResults: Patient[] = [];
+  patientSearchLoading = false;
+
   readonly form = this.#fb.nonNullable.group({
     patientId: [0, [Validators.required, Validators.min(1)]],
+    patientSearch: [''],
     title: [''],
     page: [1, [Validators.required, Validators.min(1)]],
     per_page: [20, [Validators.required, Validators.min(1), Validators.max(200)]]
@@ -100,9 +115,35 @@ export class DocumentsPageComponent implements OnInit {
   });
 
   ngOnInit(): void {
-    // Intencional: requiere patientId
+    // Configure PDF.js worker (resolved by bundler)
     // Configure PDF.js worker (resolved by bundler)
     GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
+
+    // If current user is a patient, pre-fill patientId and simplify the UI
+    void (async () => {
+      try {
+        const res: any = await this.#auth.me().toPromise?.();
+        this.me = res?.user ?? null;
+        const role = String(this.me?.role ?? '').toLowerCase();
+        this.isPatient = role === 'patient' || role === 'paciente';
+        this.myPatientId = Number(res?.patient?.id ?? 0) || 0;
+        if (this.isPatient && this.myPatientId > 0) {
+          this.form.controls.patientId.setValue(this.myPatientId as any);
+          // auto-load patient documents
+          await this.refresh();
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }
+
+  get currentPatientId(): number {
+    return Number(this.form.controls.patientId.value) || this.myPatientId || 0;
+  }
+
+  get hasPatient(): boolean {
+    return this.currentPatientId > 0;
   }
 
   get page(): number {
@@ -120,7 +161,50 @@ export class DocumentsPageComponent implements OnInit {
   }
 
   toggleUpload(): void {
+    if (!this.hasPatient) {
+      this.error = 'Selecciona un paciente para continuar.';
+      return;
+    }
     this.showUpload = !this.showUpload;
+  }
+
+  async searchPatients(): Promise<void> {
+    if (this.isPatient) return;
+    this.error = null;
+    this.actionInfo = null;
+    const q = (this.form.controls.patientSearch.value ?? '').trim();
+    if (q.length < 2) {
+      this.patientResults = [];
+      return;
+    }
+
+    this.patientSearchLoading = true;
+    try {
+      const res = await firstValueFrom(this.#patients.list({ search: q, page: 1, per_page: 10 }));
+      this.patientResults = res.data ?? [];
+    } catch (err: any) {
+      this.error = this.#formatError(err);
+      this.patientResults = [];
+    } finally {
+      this.patientSearchLoading = false;
+    }
+  }
+
+  async selectPatient(p: Patient): Promise<void> {
+    this.selectedPatient = p;
+    this.patientResults = [];
+    this.form.controls.patientId.setValue(Number(p.id) as any);
+    this.form.controls.page.setValue(1);
+    await this.refresh();
+  }
+
+  clearSelectedPatient(): void {
+    this.selectedPatient = null;
+    this.patientResults = [];
+    this.form.controls.patientId.setValue(0 as any);
+    this.form.controls.page.setValue(1);
+    this.total = 0;
+    this.items = [];
   }
 
   openSign(d: DocumentItem): void {
@@ -285,11 +369,17 @@ export class DocumentsPageComponent implements OnInit {
     this.error = null;
     this.actionInfo = null;
     this.form.markAllAsTouched();
-    if (this.form.controls.patientId.invalid || this.isLoading) return;
+    // allow patients (pre-filled) to proceed even if control validation differs
+    if (this.isLoading) return;
+
+    if (!this.hasPatient) {
+      this.error = 'Selecciona un paciente para listar documentos.';
+      return;
+    }
 
     this.isLoading = true;
     try {
-      const patientId = Number(this.form.controls.patientId.value) as Id;
+      const patientId = this.currentPatientId as Id;
       const page = this.page;
       const per_page = this.perPage;
       const res = await firstValueFrom(this.#docs.list(patientId, { page, per_page }));
@@ -312,7 +402,7 @@ export class DocumentsPageComponent implements OnInit {
     this.error = null;
     this.actionInfo = null;
     this.form.markAllAsTouched();
-    if (this.form.invalid || this.isUploading) return;
+    if (this.isUploading) return;
     if (!this.selectedFile) {
       this.error = 'Selecciona un archivo.';
       return;
@@ -320,9 +410,13 @@ export class DocumentsPageComponent implements OnInit {
 
     this.isUploading = true;
     try {
-      const patientId = Number(this.form.controls.patientId.value) as Id;
+      const patientId = this.currentPatientId;
+      if (!patientId) {
+        this.error = 'Selecciona un paciente para subir documentos.';
+        return;
+      }
       const title = this.form.controls.title.value?.trim() || undefined;
-      await firstValueFrom(this.#docs.upload(this.selectedFile, patientId, title));
+      await firstValueFrom(this.#docs.upload(this.selectedFile, patientId as Id, title));
       this.selectedFile = null;
       this.showUpload = false;
       await this.refresh();

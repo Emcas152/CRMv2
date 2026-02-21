@@ -65,12 +65,17 @@ class ProfileController
 
         $response = ['user' => $userData];
 
-        if (($userData['role'] ?? null) === 'patient') {
+        $role = strtolower((string)($userData['role'] ?? ''));
+        if ($role === 'paciente') {
+            $role = 'patient';
+        }
+
+        if ($role === 'patient') {
             $patient = $db->fetchOne('SELECT * FROM patients WHERE user_id = ?', [$userData['id']]);
             $response['patient'] = $patient;
         }
 
-        if (in_array($userData['role'], ['admin', 'doctor', 'staff'])) {
+        if (in_array($role, ['admin', 'doctor', 'staff'], true)) {
             $staff = $db->fetchOne('SELECT * FROM staff_members WHERE user_id = ?', [$userData['id']]);
             if ($staff) {
                 $response['staff_member'] = $staff;

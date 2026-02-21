@@ -11,17 +11,45 @@
 
         <form cForm [formGroup]="form" class="mb-3">
           <c-row class="g-2 align-items-end">
-            <c-col md="4" lg="3">
-              <label cLabel for="patientId">Paciente (ID)</label>
-              <input id="patientId" cFormControl type="number" formControlName="patientId" placeholder="Ej: 123" />
-              <div *ngIf="form.controls.patientId.touched && form.controls.patientId.invalid" class="text-danger small mt-1">Ingresa un ID válido.</div>
+            <c-col md="5" lg="4" *ngIf="!isPatient">
+              <label cLabel for="patientSearch">Paciente</label>
+              <div class="d-flex gap-2">
+                <input
+                  id="patientSearch"
+                  cFormControl
+                  type="text"
+                  formControlName="patientSearch"
+                  placeholder="Buscar por nombre o correo…"
+                  [disabled]="patientSearchLoading"
+                  (keydown.enter)="$event.preventDefault(); searchPatients()"
+                />
+                <button cButton color="secondary" type="button" (click)="searchPatients()" [disabled]="patientSearchLoading">
+                  {{ patientSearchLoading ? 'Buscando…' : 'Buscar' }}
+                </button>
+              </div>
+
+              <div *ngIf="selectedPatient" class="small text-body-secondary mt-1">
+                Seleccionado: <strong>{{ selectedPatient.name }}</strong>
+                <button cButton color="link" size="sm" type="button" (click)="clearSelectedPatient()">Cambiar</button>
+              </div>
+
+              <div *ngIf="!selectedPatient && patientResults.length" class="border rounded p-2 mt-2">
+                <div class="small text-body-secondary mb-2">Resultados</div>
+                <div *ngFor="let p of patientResults" class="d-flex align-items-center justify-content-between gap-2 py-1">
+                  <div class="small">
+                    <strong>{{ p.name }}</strong>
+                    <span class="text-body-secondary"> — {{ p.email }}</span>
+                  </div>
+                  <button cButton color="primary" size="sm" type="button" (click)="selectPatient(p)">Seleccionar</button>
+                </div>
+              </div>
             </c-col>
 
             <c-col md="8" lg="9" class="d-flex flex-wrap gap-2">
               <button cButton color="primary" type="button" (click)="refresh()" [disabled]="isLoading">
                 {{ isLoading ? 'Cargando…' : 'Listar' }}
               </button>
-              <button cButton color="success" type="button" (click)="toggleUpload()" [disabled]="form.controls.patientId.invalid">
+              <button cButton color="success" type="button" (click)="toggleUpload()" [disabled]="!hasPatient">
                 {{ showUpload ? 'Cerrar subida' : 'Subir documento' }}
               </button>
               <div class="text-body-secondary small align-self-center">Total: {{ total }}</div>
@@ -32,9 +60,9 @@
             </c-col>
           </c-row>
 
-          <div *ngIf="showUpload" class="mt-3 p-3 border rounded" style="background: rgba(255,255,255,.03)">
+            <div *ngIf="showUpload" class="mt-3 p-3 border rounded" style="background: rgba(255,255,255,.03)">
             <c-row class="g-3 align-items-end">
-              <c-col md="5">
+              <c-col md="5" *ngIf="!isPatient">
                 <label cLabel for="title">Título (opcional)</label>
                 <input id="title" cFormControl type="text" formControlName="title" placeholder="Ej: Consentimiento informado" />
               </c-col>
@@ -43,7 +71,7 @@
                 <input id="file" class="form-control" type="file" (change)="onFileChange($event)" />
               </c-col>
               <c-col md="2" class="d-flex gap-2">
-                <button cButton color="success" type="button" (click)="upload()" [disabled]="isUploading">
+                  <button cButton color="success" type="button" (click)="upload()" [disabled]="isUploading">
                   {{ isUploading ? 'Subiendo…' : 'Subir' }}
                 </button>
               </c-col>
@@ -123,13 +151,13 @@
                   <div *ngIf="!(isImage(d) && previewUrl(d))" class="text-body-secondary small">No preview</div>
                 </td>
                 <td class="align-middle">{{ d.id }}</td>
-                <td class="align-middle" style="min-width:180px">
+                  <td class="align-middle" style="min-width:180px">
                   <input
                     class="form-control form-control-sm"
                     type="text"
                     [value]="titleById[d.id] ?? (d.title ?? '')"
                     (input)="setTitle(d, $any($event.target).value)"
-                    [disabled]="actingId === d.id"
+                      [disabled]="actingId === d.id || isPatient"
                   />
                 </td>
                 <td class="align-middle">
@@ -141,13 +169,16 @@
                   <span *ngIf="d.signed" class="badge bg-success">Firmado</span>
                   <span *ngIf="!d.signed" class="badge bg-warning text-dark">Por firmar</span>
                 </td>
-                <td class="d-flex flex-wrap gap-2 align-middle">
+                  <td class="d-flex flex-wrap gap-2 align-middle">
                   <button cButton color="secondary" size="sm" type="button" (click)="openFile(d.id)">Abrir</button>
                   <button cButton color="secondary" size="sm" type="button" (click)="openHtml(d.id)">Previsualizar</button>
                   <button *ngIf="!d.signed" cButton color="warning" size="sm" type="button" (click)="openSign(d)">Firmar</button>
-                  <button cButton color="info" size="sm" type="button" (click)="saveTitle(d)" [disabled]="actingId === d.id">Guardar</button>
-                  <button cButton color="warning" size="sm" type="button" (click)="replace(d)" [disabled]="actingId === d.id">Reemplazar</button>
-                  <button cButton color="danger" size="sm" type="button" (click)="delete(d.id)" [disabled]="actingId === d.id">Eliminar</button>
+                    <!-- Staff-only administrative actions -->
+                    <ng-container *ngIf="!isPatient">
+                    <button cButton color="info" size="sm" type="button" (click)="saveTitle(d)" [disabled]="actingId === d.id">Guardar</button>
+                    <button cButton color="warning" size="sm" type="button" (click)="replace(d)" [disabled]="actingId === d.id">Reemplazar</button>
+                    <button cButton color="danger" size="sm" type="button" (click)="delete(d.id)" [disabled]="actingId === d.id">Eliminar</button>
+                  </ng-container>
 
                   <span *ngIf="rowStatusById[d.id]" class="small text-body-secondary align-self-center">{{ rowStatusById[d.id] }}</span>
                 </td>

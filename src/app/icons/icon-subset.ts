@@ -30,6 +30,7 @@ import {
   cilBookmark,
   cilCalculator,
   cilCalendar,
+  cilCart,
   cilChart,
   cilChartPie,
   cilCheck,
@@ -45,6 +46,7 @@ import {
   cilDollar,
   cilDrop,
   cilEnvelopeClosed,
+  cilEnvelopeLetter,
   cilEnvelopeOpen,
   cilExternalLink,
   cilFile,
@@ -132,6 +134,7 @@ export const iconSubset = {
   cilBookmark,
   cilCalculator,
   cilCalendar,
+  cilCart,
   cilChart,
   cilChartPie,
   cilCheck,
@@ -147,6 +150,7 @@ export const iconSubset = {
   cilDollar,
   cilDrop,
   cilEnvelopeClosed,
+  cilEnvelopeLetter,
   cilEnvelopeOpen,
   cilExternalLink,
   cilFile,
@@ -233,6 +237,7 @@ export enum IconSubset {
   cilBookmark = 'cilBookmark',
   cilCalculator = 'cilCalculator',
   cilCalendar = 'cilCalendar',
+  cilCart = 'cilCart',
   cilChart = 'cilChart',
   cilChartPie = 'cilChartPie',
   cilCheck = 'cilCheck',
@@ -248,6 +253,7 @@ export enum IconSubset {
   cilDollar = 'cilDollar',
   cilDrop = 'cilDrop',
   cilEnvelopeClosed = 'cilEnvelopeClosed',
+  cilEnvelopeLetter = 'cilEnvelopeLetter',
   cilEnvelopeOpen = 'cilEnvelopeOpen',
   cilExternalLink = 'cilExternalLink',
   cilFile = 'cilFile',
@@ -301,4 +307,3 @@ export enum IconSubset {
   logo = 'logo',
   signet = 'signet'
 }
-

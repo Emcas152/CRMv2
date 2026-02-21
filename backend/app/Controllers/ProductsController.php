@@ -127,7 +127,9 @@ class ProductsController
             'price' => 'required|numeric|min:0|max:999999.99',
             'stock' => 'integer|min:0|max:999999',
             'type' => 'required|in:product,service',
-            'active' => 'boolean'
+            'active' => 'boolean',
+            'requires_attendance' => 'boolean',
+            'attendance_sessions' => 'integer|min:0|max:1000'
         ]);
 
         try {
@@ -138,6 +140,14 @@ class ProductsController
 
         $db = \App\Core\Database::getInstance();
 
+        // Best-effort schema alignment (MySQL-compatible).
+        try { $db->execute("ALTER TABLE products ADD COLUMN price_encrypted LONGBLOB NULL", []); } catch (\Exception $e) {}
+        try { $db->execute("ALTER TABLE products MODIFY COLUMN price_encrypted LONGBLOB NULL", []); } catch (\Exception $e) {}
+
+        // Attendance-control columns for service items.
+        try { $db->execute("ALTER TABLE products ADD COLUMN requires_attendance TINYINT(1) NOT NULL DEFAULT 0", []); } catch (\Exception $e) {}
+        try { $db->execute("ALTER TABLE products ADD COLUMN attendance_sessions INT NOT NULL DEFAULT 0", []); } catch (\Exception $e) {}
+
         try {
             // Validar precio antes de encriptar
             if (!empty($input['price'])) {
@@ -146,8 +156,12 @@ class ProductsController
                 }
             }
 
+            $requiresAttendance = isset($input['requires_attendance']) ? ($input['requires_attendance'] ? 1 : 0) : 0;
+            $attendanceSessions = isset($input['attendance_sessions']) ? intval($input['attendance_sessions']) : 0;
+            if ($attendanceSessions < 0) $attendanceSessions = 0;
+
             $db->execute(
-                'INSERT INTO products (name, sku, description, price, price_encrypted, stock, type, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
+                'INSERT INTO products (name, sku, description, price, price_encrypted, stock, type, active, requires_attendance, attendance_sessions, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())',
                 [
                     $input['name'],
                     $input['sku'] ?? null,
@@ -156,7 +170,9 @@ class ProductsController
                     \App\Core\FieldEncryption::encryptValue($input['price']),
                     $input['stock'] ?? 0,
                     $input['type'],
-                    isset($input['active']) ? ($input['active'] ? 1 : 0) : 1
+                    isset($input['active']) ? ($input['active'] ? 1 : 0) : 1,
+                    $requiresAttendance,
+                    $attendanceSessions
                 ]
             );
 
@@ -193,7 +209,9 @@ class ProductsController
             'price' => 'numeric|min:0|max:999999.99',
             'stock' => 'integer|min:0|max:999999',
             'type' => 'in:product,service',
-            'active' => 'boolean'
+            'active' => 'boolean',
+            'requires_attendance' => 'boolean',
+            'attendance_sessions' => 'integer|min:0|max:1000'
         ]);
 
         try {
@@ -203,6 +221,12 @@ class ProductsController
         }
 
         try {
+            // Ensure columns exist (best-effort)
+            try { $db->execute("ALTER TABLE products ADD COLUMN price_encrypted LONGBLOB NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE products MODIFY COLUMN price_encrypted LONGBLOB NULL", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE products ADD COLUMN requires_attendance TINYINT(1) NOT NULL DEFAULT 0", []); } catch (\Exception $e) {}
+            try { $db->execute("ALTER TABLE products ADD COLUMN attendance_sessions INT NOT NULL DEFAULT 0", []); } catch (\Exception $e) {}
+
             $updates = [];
             $params = [];
 
@@ -227,6 +251,16 @@ class ProductsController
             if (isset($input['active'])) {
                 $updates[] = 'active = ?';
                 $params[] = $input['active'] ? 1 : 0;
+            }
+
+            if (isset($input['requires_attendance'])) {
+                $updates[] = 'requires_attendance = ?';
+                $params[] = $input['requires_attendance'] ? 1 : 0;
+            }
+
+            if (isset($input['attendance_sessions'])) {
+                $updates[] = 'attendance_sessions = ?';
+                $params[] = max(0, intval($input['attendance_sessions']));
             }
 
             $updates[] = 'updated_at = NOW()';
@@ -309,7 +343,7 @@ class ProductsController
         $db = \App\Core\Database::getInstance();
 
         try {
-            $db->execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS image_url VARCHAR(500) NULL AFTER description", []);
+            $db->execute("ALTER TABLE products ADD COLUMN image_url VARCHAR(500) NULL", []);
         } catch (\Exception $e) {
         }
 

@@ -1,27 +1,112 @@
-<c-row>
-  <c-col xs="12">
-    <c-card class="mb-4">
-      <c-card-header>
-        <strong>Bienvenido</strong>
-      </c-card-header>
-      <c-card-body>
-        <div class="mb-3">
-          <h3 class="mb-1">Bienvenido{{ me?.name ? (', ' + me?.name) : '' }}!</h3>
-          <p class="text-body-secondary">Gracias por usar nuestro portal del paciente. Aquí puedes ver tus próximas citas, historial y recomendaciones.</p>
+<div class="pw-wrapper">
+  <div class="pw-container">
+
+    <!-- Header: Avatar + Greeting + Loyalty -->
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
+      <div class="d-flex align-items-center gap-3">
+        <img *ngIf="patient?.avatar_url" [src]="patient?.avatar_url" alt="avatar" class="pw-avatar" />
+        <div *ngIf="!patient?.avatar_url" class="pw-avatar-placeholder">
+          {{ me?.name ? me!.name!.charAt(0).toUpperCase() : '?' }}
+        </div>
+        <span class="h5 mb-0 fw-bold text-body-emphasis">Bienvenido{{ me?.name ? (', ' + me!.name) : '' }}!</span>
+      </div>
+      <div class="pw-loyalty">
+        <span aria-hidden="true">&#9813;</span>
+        Puntos: {{ loyaltyPoints | number:'1.0-0' }}
+      </div>
+    </div>
+
+    <!-- Next Appointment -->
+    <div class="pw-appointment-card mb-4">
+      <div class="h4 mb-3 fw-bold text-body-emphasis">Próxima cita</div>
+
+      <div *ngIf="nextAppointment">
+        <div class="d-flex align-items-start gap-3 mb-3">
+          <div class="pw-accent-bar"></div>
+          <div>
+            <div class="fw-semibold text-body-emphasis">{{ nextAppointment.patient_name || patient?.name || '' }}</div>
+            <div class="text-body-secondary small mt-1">{{ nextAppointment.service || 'Consulta' }}</div>
+          </div>
+        </div>
+        <div class="fs-5 fw-semibold text-body-emphasis">{{ nextAppointment.appointment_date }} · {{ nextAppointment.appointment_time }}</div>
+      </div>
+
+      <div *ngIf="!nextAppointment" class="pw-surface-muted text-center p-3">
+        Aún no tienes citas, ¡agenda la primera aquí!
+        <button class="btn pw-btn mt-3" (click)="bookAppointment()">Programar mi primera cita</button>
+      </div>
+    </div>
+
+    <hr class="opacity-25 my-0 mb-4" />
+
+    <!-- QR + Action Buttons -->
+    <div class="d-flex flex-wrap gap-4 align-items-start mb-4">
+      <div class="d-flex flex-column align-items-center gap-2">
+        <div class="pw-qr-container">
+          <img *ngIf="qrDataUrl" [src]="qrDataUrl" alt="QR Check-In" style="width:100px;height:100px;display:block" />
+          <div *ngIf="!qrDataUrl" class="text-body-secondary small text-center" style="width:100px;height:100px;display:flex;align-items:center;justify-content:center;padding:0 10px">
+            {{ isLoading ? 'Generando QR…' : 'QR no disponible' }}
+          </div>
+        </div>
+        <span class="text-body-secondary small text-center">Escanear para Check-In</span>
+      </div>
+
+      <div class="d-flex flex-wrap gap-2 align-items-center flex-grow-1">
+        <button class="btn pw-btn" (click)="bookAppointment()">Agendar cita</button>
+        <button class="btn pw-btn" (click)="goMessages()">Mensajear doctor</button>
+        <a class="btn pw-btn" role="button" [routerLink]="['/crm/documents']">Subir fotos</a>
+      </div>
+    </div>
+
+    <!-- Bottom Row: Before & After + Pending Actions -->
+    <div class="d-flex flex-wrap gap-3">
+
+      <!-- Before & After -->
+      <div class="card border-0 shadow-sm p-3 flex-fill" style="min-width:260px;background:var(--cui-card-bg);border:1px solid color-mix(in srgb, var(--cui-border-color) 80%, transparent);border-radius:14px">
+        <div class="fw-bold text-body-emphasis mb-2">Before &amp; After</div>
+        <div *ngIf="!beforePhotoUrl && !afterPhotoUrl" class="text-body-secondary small mb-2">
+          Aún no has subido fotos. Cuando quieras, súbelas aquí.
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+          <div class="pw-ba-photo">
+            <img *ngIf="beforePhotoUrl" [src]="beforePhotoUrl" />
+            <span *ngIf="!beforePhotoUrl" class="text-body-secondary small text-center px-2">Sin foto (Antes)</span>
+          </div>
+          <span class="text-body-secondary fs-5">&#8594;</span>
+          <div class="pw-ba-photo">
+            <img *ngIf="afterPhotoUrl" [src]="afterPhotoUrl" />
+            <span *ngIf="!afterPhotoUrl" class="text-body-secondary small text-center px-2">Sin foto (Después)</span>
+          </div>
+          <div class="d-flex flex-column gap-2 ms-auto">
+            <label class="btn btn-outline-primary btn-sm mb-0">
+              Subir Antes
+              <input class="d-none" type="file" accept="image/*" (change)="uploadPhoto('before', $event)" />
+            </label>
+            <label class="btn btn-outline-primary btn-sm mb-0">
+              Subir Después
+              <input class="d-none" type="file" accept="image/*" (change)="uploadPhoto('after', $event)" />
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pending Actions -->
+      <div class="card border-0 shadow-sm p-3 flex-fill" style="min-width:260px;background:var(--cui-card-bg);border:1px solid color-mix(in srgb, var(--cui-border-color) 80%, transparent);border-radius:14px">
+        <div class="fw-bold text-body-emphasis mb-2">Acciones pendientes</div>
+
+        <div *ngIf="unsignedDocuments.length === 0" class="text-body-secondary">
+          No tienes acciones pendientes.
         </div>
 
-        <div class="d-flex gap-3">
-          <a cButton color="primary" [routerLink]="['/crm/appointments']">Ver mis citas</a>
-          <a cButton color="secondary" [routerLink]="['/crm/profile']">Mi perfil</a>
+        <div class="d-flex flex-column gap-2">
+          <div *ngFor="let d of unsignedDocuments" class="d-flex align-items-center gap-2 p-2 rounded" style="background:color-mix(in srgb, var(--cui-card-bg) 86%, var(--cui-body-bg) 14%)">
+            <div class="pw-pending-dot danger">!</div>
+            <span class="flex-grow-1">{{ d.title || 'Firmar documento' }}</span>
+            <button class="btn btn-sm pw-btn" (click)="openSign(d.id)">Firmar</button>
+          </div>
         </div>
+      </div>
 
-        <hr />
-
-        <div>
-          <h5>Próximas citas</h5>
-          <p class="text-body-secondary">Si tienes citas programadas, las verás aquí próximamente.</p>
-        </div>
-      </c-card-body>
-    </c-card>
-  </c-col>
-</c-row>
+    </div>
+  </div>
+</div>

@@ -8,7 +8,14 @@ import { AuthService } from './auth.service';
 
 function hasToken(): boolean {
   const tokenStorage = inject(TokenStorageService);
-  return !!tokenStorage.getToken();
+  const token = tokenStorage.getToken();
+  if (!token) return false;
+  if (tokenStorage.isTokenExpired()) {
+    // Clear expired token so subsequent checks are clean
+    tokenStorage.clearToken();
+    return false;
+  }
+  return true;
 }
 
 export const authGuardFn: CanActivateFn = () => {
@@ -23,7 +30,7 @@ export const authChildGuardFn: CanActivateChildFn = (_route, state) => {
   const tokenStorage = inject(TokenStorageService);
 
   if (!hasToken()) {
-    return router.parseUrl('/login');
+    return router.parseUrl('/login?sessionExpired=true');
   }
 
   // Use state.url to get the full destination URL, not just the current segment

@@ -76,10 +76,99 @@ class DocumentsController
                 return $this->sign($id);
             }
 
+            if ($id && !$action && $method === 'PUT') {
+                return $this->update($id);
+            }
+
+            if ($id && !$action && $method === 'DELETE') {
+                return $this->destroy($id);
+            }
+
             \App\Core\Response::error('Método no permitido', 405);
         } catch (\Throwable $e) {
             \App\Core\ErrorHandler::handle($e);
         }
+    }
+
+    private function update($id)
+    {
+        $user = \App\Core\Auth::getCurrentUser();
+        $db = \App\Core\Database::getInstance();
+
+        $doc = $db->fetchOne('SELECT * FROM documents WHERE id = ?', [$id]);
+        if (!$doc) {
+            \App\Core\Response::notFound('Documento no encontrado');
+        }
+
+        if (!$this->canAccessPatient($user, intval($doc['patient_id']), $db)) {
+            \App\Core\Response::forbidden('No tienes permisos para actualizar este documento');
+        }
+
+        require_once __DIR__ . '/../Core/Request.php';
+        $input = \App\Core\Request::body();
+
+        $updates = [];
+        $params = [];
+
+        if (array_key_exists('title', $input)) {
+            $updates[] = 'title = ?';
+            $params[] = ($input['title'] === null) ? null : (string)$input['title'];
+        }
+
+        if (empty($updates)) {
+            \App\Core\Response::success($doc, 'Sin cambios');
+        }
+
+        $updates[] = 'updated_at = NOW()';
+        $params[] = $id;
+
+        $db->execute('UPDATE documents SET ' . implode(', ', $updates) . ' WHERE id = ?', $params);
+
+        if (class_exists('\\App\\Core\\Audit')) {
+            \App\Core\Audit::log('update_document', 'document', $id, ['updates' => $updates]);
+        }
+
+        $doc = $db->fetchOne('SELECT * FROM documents WHERE id = ?', [$id]);
+        $doc['download_url'] = self::API_BASE . '/documents/' . intval($id) . '/download';
+        $doc['file_url'] = self::API_BASE . '/documents/' . intval($id) . '/file';
+        $doc['view_url'] = self::API_BASE . '/documents/' . intval($id) . '/view';
+
+        \App\Core\Response::success($doc, 'Documento actualizado');
+    }
+
+    private function destroy($id)
+    {
+        $user = \App\Core\Auth::getCurrentUser();
+        $db = \App\Core\Database::getInstance();
+
+        $doc = $db->fetchOne('SELECT * FROM documents WHERE id = ?', [$id]);
+        if (!$doc) {
+            \App\Core\Response::notFound('Documento no encontrado');
+        }
+
+        if (!$this->canAccessPatient($user, intval($doc['patient_id']), $db)) {
+            \App\Core\Response::forbidden('No tienes permisos para eliminar este documento');
+        }
+
+        $config = require __DIR__ . '/../../config/app.php';
+        $uploadRoot = $config['upload_path'] ?? (__DIR__ . '/../../uploads');
+        $filePath = rtrim(str_replace('\\', '/', $uploadRoot), '/') . '/documents/' . intval($doc['patient_id']) . '/' . ($doc['filename'] ?? '');
+
+        try {
+            $db->execute('DELETE FROM documents WHERE id = ?', [$id]);
+        } catch (\Exception $e) {
+            \App\Core\Response::dbException('Error al eliminar documento', $e);
+        }
+
+        if ($filePath && is_file($filePath)) {
+            @unlink($filePath);
+        }
+
+        if (class_exists('\\App\\Core\\Audit')) {
+            \App\Core\Audit::log('delete_document', 'document', $id, ['patient_id' => $doc['patient_id'] ?? null]);
+        }
+
+        \App\Core\Response::success(null, 'Documento eliminado');
     }
 
     private function index()

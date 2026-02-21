@@ -13,6 +13,11 @@ import {
   FormDirective,
   FormLabelDirective,
   FormSelectDirective,
+  ModalComponent,
+  ModalHeaderComponent,
+  ModalBodyComponent,
+  ModalFooterComponent,
+  ButtonCloseDirective,
   RowComponent,
   TableDirective
 } from '@coreui/angular';
@@ -44,6 +49,12 @@ import {
     FormLabelDirective,
     FormControlDirective,
     FormSelectDirective
+    ,
+    ModalComponent,
+    ModalHeaderComponent,
+    ModalBodyComponent,
+    ModalFooterComponent,
+    ButtonCloseDirective
   ]
 })
 export class ProductsPageComponent implements OnInit {
@@ -60,6 +71,9 @@ export class ProductsPageComponent implements OnInit {
   editingId: number | null = null;
   readonly types: ProductType[] = ['product', 'service'];
 
+  // Modal state for create/edit
+  showProductModal = false;
+
   readonly filterForm = this.#fb.nonNullable.group({
     search: [''],
     type: ['' as '' | ProductType],
@@ -75,7 +89,9 @@ export class ProductsPageComponent implements OnInit {
     sku: [''],
     description: [''],
     stock: [0],
-    active: ['true' as 'true' | 'false']
+    active: ['true' as 'true' | 'false'],
+    requires_attendance: [false],
+    attendance_sessions: [0]
   });
 
   ngOnInit(): void {
@@ -133,8 +149,11 @@ export class ProductsPageComponent implements OnInit {
       sku: '',
       description: '',
       stock: 0,
-      active: 'true'
+      active: 'true',
+      requires_attendance: false,
+      attendance_sessions: 0
     });
+    this.showProductModal = true;
   }
 
   startEdit(p: Product): void {
@@ -147,8 +166,11 @@ export class ProductsPageComponent implements OnInit {
       sku: p.sku ?? '',
       description: p.description ?? '',
       stock: p.stock ?? 0,
-      active: p.active === false ? 'false' : 'true'
+      active: p.active === false ? 'false' : 'true',
+      requires_attendance: !!(p as any).requires_attendance,
+      attendance_sessions: Number((p as any).attendance_sessions ?? 0) || 0
     });
+    this.showProductModal = true;
   }
 
   cancelEdit(): void {
@@ -173,6 +195,11 @@ export class ProductsPageComponent implements OnInit {
       stock: raw.stock === null || raw.stock === undefined ? undefined : Number(raw.stock),
       active
     };
+
+    if (raw.type === 'service') {
+      payload.requires_attendance = !!raw.requires_attendance;
+      payload.attendance_sessions = Math.max(0, Number(raw.attendance_sessions ?? 0) || 0);
+    }
 
     try {
       if (this.editingId === null) {

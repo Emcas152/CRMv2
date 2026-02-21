@@ -67,66 +67,70 @@
           </c-row>
         </form>
 
-        <form cForm class="mb-4" [formGroup]="form" (ngSubmit)="save()">
-          <div class="mb-2">
-            <strong>{{ editingId === null ? 'Crear producto' : 'Editar producto #' + editingId }}</strong>
-          </div>
-          <c-row class="g-3">
-            <c-col md="4">
-              <label cLabel for="name">Nombre</label>
-              <input id="name" cFormControl type="text" formControlName="name" />
-              @if (form.controls.name.touched && form.controls.name.invalid) {
-                <div class="text-danger small mt-1">Nombre requerido.</div>
-              }
-            </c-col>
-            <c-col md="2">
-              <label cLabel for="type">Tipo</label>
-              <select id="type" cSelect formControlName="type">
-                @for (t of types; track t) {
-                  <option [value]="t">{{ t }}</option>
+        <!-- Product create/edit modal -->
+        <c-modal [visible]="showProductModal" (visibleChange)="showProductModal = $event">
+          <c-modal-header>
+            <h5 cModalTitle>{{ editingId === null ? 'Crear producto' : 'Editar producto #' + editingId }}</h5>
+            <button cButtonClose (click)="showProductModal = false"></button>
+          </c-modal-header>
+          <c-modal-body>
+            <form cForm [formGroup]="form" (ngSubmit)="save()">
+              <c-row class="g-3">
+                <c-col md="6">
+                  <label cLabel for="name">Nombre</label>
+                  <input id="name" cFormControl type="text" formControlName="name" />
+                  @if (form.controls.name.touched && form.controls.name.invalid) {
+                    <div class="text-danger small mt-1">Nombre requerido.</div>
+                  }
+                </c-col>
+                <c-col md="3">
+                  <label cLabel for="price">Precio</label>
+                  <input id="price" cFormControl type="number" formControlName="price" />
+                </c-col>
+                <c-col md="3">
+                  <label cLabel for="type">Tipo</label>
+                  <select id="type" cSelect formControlName="type">
+                    @for (t of types; track t) {
+                      <option [value]="t">{{ t }}</option>
+                    }
+                  </select>
+                </c-col>
+
+                <c-col md="6">
+                  <label cLabel for="sku">SKU</label>
+                  <input id="sku" cFormControl type="text" formControlName="sku" />
+                </c-col>
+                <c-col md="6">
+                  <label cLabel for="stock">Stock</label>
+                  <input id="stock" cFormControl type="number" formControlName="stock" />
+                </c-col>
+
+                <c-col xs="12">
+                  <label cLabel for="description">Descripción</label>
+                  <input id="description" cFormControl type="text" formControlName="description" />
+                </c-col>
+
+                @if (form.controls.type.value === 'service') {
+                  <c-col md="6">
+                    <label cLabel for="requires_attendance">Control de asistencia</label>
+                    <div class="form-check mt-1">
+                      <input id="requires_attendance" class="form-check-input" type="checkbox" formControlName="requires_attendance" />
+                      <label class="form-check-label" for="requires_attendance">Requiere control de asistencia</label>
+                    </div>
+                  </c-col>
+                  <c-col md="6">
+                    <label cLabel for="attendance_sessions">Sesiones</label>
+                    <input id="attendance_sessions" cFormControl type="number" min="0" max="1000" formControlName="attendance_sessions" />
+                  </c-col>
                 }
-              </select>
-            </c-col>
-            <c-col md="2">
-              <label cLabel for="price">Precio</label>
-              <input id="price" cFormControl type="number" formControlName="price" />
-              @if (form.controls.price.touched && form.controls.price.invalid) {
-                <div class="text-danger small mt-1">Precio válido requerido.</div>
-              }
-            </c-col>
-            <c-col md="2">
-              <label cLabel for="stock">Stock</label>
-              <input id="stock" cFormControl type="number" formControlName="stock" />
-            </c-col>
-            <c-col md="2">
-              <label cLabel for="active">Activo</label>
-              <select id="active" cSelect formControlName="active">
-                <option value="true">Sí</option>
-                <option value="false">No</option>
-              </select>
-            </c-col>
-
-            <c-col md="3">
-              <label cLabel for="sku">SKU</label>
-              <input id="sku" cFormControl type="text" formControlName="sku" />
-            </c-col>
-            <c-col md="9">
-              <label cLabel for="description">Descripción</label>
-              <input id="description" cFormControl type="text" formControlName="description" />
-            </c-col>
-
-            <c-col xs="12" class="d-flex gap-2">
-              <button cButton color="success" type="submit" [disabled]="isSaving">
-                {{ isSaving ? 'Guardando…' : (editingId === null ? 'Crear' : 'Guardar') }}
-              </button>
-              @if (editingId !== null) {
-                <button cButton color="secondary" type="button" (click)="cancelEdit()" [disabled]="isSaving">
-                  Cancelar
-                </button>
-              }
-            </c-col>
-          </c-row>
-        </form>
+              </c-row>
+            </form>
+          </c-modal-body>
+          <c-modal-footer>
+            <button cButton color="secondary" type="button" (click)="showProductModal = false">Cancelar</button>
+            <button cButton color="success" type="button" (click)="save()" [disabled]="isSaving">{{ isSaving ? 'Guardando…' : (editingId === null ? 'Crear' : 'Guardar') }}</button>
+          </c-modal-footer>
+        </c-modal>
 
         <table cTable [striped]="true">
           <thead>

@@ -3,35 +3,23 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import {
-  AlertComponent,
-  ButtonDirective,
-  CardBodyComponent,
-  CardComponent,
-  CardHeaderComponent,
-  ColComponent,
-  RowComponent,
-  TableDirective
+  ButtonDirective
 } from '@coreui/angular';
 import { ChartjsComponent } from '@coreui/angular-chartjs';
 import { getStyle } from '@coreui/utils';
 import { ChartData, ChartOptions } from 'chart.js';
 
 import { AuthService, AuthUser } from '../../../core/auth/auth.service';
+import { Router } from '@angular/router';
 import { Sale, SalesService } from '../../../core/services/sales.service';
 import { AppointmentsService, Appointment } from '../../../core/services/appointments.service';
 
 @Component({
   selector: 'app-crm-home',
   templateUrl: './crm-home.component.html',
+  styleUrls: ['./crm-home.component.scss'],
   standalone: true,
   imports: [
-    RowComponent,
-    ColComponent,
-    CardComponent,
-    CardHeaderComponent,
-    CardBodyComponent,
-    TableDirective,
-    AlertComponent,
     ButtonDirective,
     RouterLink,
     ChartjsComponent,
@@ -41,6 +29,7 @@ import { AppointmentsService, Appointment } from '../../../core/services/appoint
 export class CrmHomeComponent implements OnInit {
   readonly #sales = inject(SalesService);
   readonly #auth = inject(AuthService);
+  readonly #router = inject(Router);
   readonly #route = inject(ActivatedRoute);
   readonly #appointments = inject(AppointmentsService);
 
@@ -64,21 +53,62 @@ export class CrmHomeComponent implements OnInit {
   dateTo: string | null = null;
 
   goals: { daily: number; weekly: number; monthly: number } = { daily: 0, weekly: 0, monthly: 0 };
+  showGoalsEditor = false;
 
   // Weekly calendar
   weekDays: string[] = [];
   weekAppointments: Record<string, Appointment[]> = {};
 
+  // ─── Dashboard KPI values ───
+  dailyRevenue = 0;
+  dailyRevenueChange = 0;
+  patientsInLobby = 0;
+  patientsInTreatment = 0;
+  completionPct = 0;
+  monthGoalPct = 0;
+  dailyGoalPct = 0;
+  staffingPct = 90;
+
+  // Schedule
+  todayAppointments: Appointment[] = [];
+  confirmedCount = 0;
+  pendingApptsCount = 0;
+
+  readonly scheduleHours = [
+    '9:00 AM', '10:00 AM', '11:00 AM', '12:00 PM',
+    '1:00 PM', '2:00 PM', '3:00 PM', '4:00 PM',
+    '5:00 PM', '6:00 PM', '7:00 PM'
+  ];
+
+  // Alerts
+  criticalAlerts: Array<{ text: string; type: 'red' | 'yellow' | 'blue' }> = [];
+
+  // ─── Charts ───
   salesByDayChartData: ChartData<'line'> = { labels: [], datasets: [] };
   salesByDayChartOptions: ChartOptions<'line'> = this.#buildLineChartOptions();
-
   salesByPaymentChartData: ChartData<'doughnut'> = { labels: [], datasets: [] };
   salesByPaymentChartOptions: ChartOptions<'doughnut'> = this.#buildDoughnutChartOptions();
 
+  // Bar charts for dashboard
+  financialBarData: ChartData<'bar'> = { labels: [], datasets: [] };
+  financialBarOptions: ChartOptions<'bar'> = this.#buildBarChartOptions();
+  categoryBarData: ChartData<'bar'> = { labels: [], datasets: [] };
+  categoryBarOptions: ChartOptions<'bar'> = this.#buildBarChartOptions();
+
+  // Sparkline for pulse card
+  sparklineData: ChartData<'line'> = { labels: [], datasets: [] };
+  sparklineOptions: ChartOptions<'line'> = {
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+    scales: {
+      x: { display: false },
+      y: { display: false }
+    },
+    elements: { point: { radius: 0 } }
+  };
+
   ngOnInit(): void {
     this.deniedRoles = this.#route.snapshot.queryParamMap.get('denied');
-    // Avoid NG0100 (ExpressionChangedAfterItHasBeenCheckedError) in dev mode
-    // when data observables can resolve synchronously during the first CD pass.
     queueMicrotask(() => void this.load());
   }
 
@@ -88,18 +118,18 @@ export class CrmHomeComponent implements OnInit {
     this.error = null;
 
     try {
-      // Current user (for role display)
       const meRes = await firstValueFrom(this.#auth.me());
       this.me = meRes?.user ?? null;
 
-      // Restrict dashboard to admin roles only
-      if (this.me && String(this.me.role || '').toLowerCase() === 'patient') {
-        this.error = 'No tienes permisos para ver el dashboard.';
+      if (this.me) {
+        const role = String(this.me.role || '').toLowerCase();
+        if (role === 'patient' || role === 'paciente') {
+        void this.#router.navigateByUrl('/crm/welcome');
         this.isLoading = false;
         return;
+        }
       }
 
-      // Determine date range based on selected period
       const now = new Date();
       let dateFrom = new Date(now.getFullYear(), now.getMonth(), 1);
       let dateTo = now;
@@ -152,24 +182,52 @@ export class CrmHomeComponent implements OnInit {
       };
 
       this.monthSalesAmount = data.reduce((acc, s) => acc + saleTotal(s), 0);
-      this.todaySalesCount = data.filter((s) => {
+
+      const todaySales = data.filter((s) => {
         const created = typeof s.created_at === 'string' ? s.created_at : '';
         return created.startsWith(todayStr);
-      }).length;
+      });
+      this.todaySalesCount = todaySales.length;
+      this.dailyRevenue = todaySales.reduce((acc, s) => acc + saleTotal(s), 0);
+
       this.pendingSalesCount = data.filter((s) => String(s.status || '').toLowerCase() === 'pending').length;
 
-      this.recentSales = data.slice(0, 10);
+      this.recentSales = data.slice(0, 8);
 
+      // Compute KPI percentages
+      this._computeKPIs(data, dateFrom, dateTo, saleTotal);
+
+      // Build all charts
       this.#buildCharts(data, dateFrom, dateTo);
+      this.#buildBarCharts(data, dateFrom, dateTo);
 
-      // Load weekly appointments for the same range (used by calendar)
+      // Load appointments
       try {
         const apptsRes = await firstValueFrom(this.#appointments.list({ date_from: fmt(dateFrom), date_to: fmt(dateTo), per_page: 500 }));
         const appts = Array.isArray(apptsRes.data) ? apptsRes.data : [];
         this._buildWeekCalendar(dateFrom, dateTo, appts);
+
+        // Today's appointments for schedule
+        this.todayAppointments = appts.filter(a => a.appointment_date === todayStr);
+        this.todayAppointments.sort((a, b) => (a.appointment_time || '').localeCompare(b.appointment_time || ''));
+
+        this.confirmedCount = this.todayAppointments.filter(a => a.status === 'confirmed').length;
+        this.pendingApptsCount = this.todayAppointments.filter(a => a.status === 'pending').length;
+
+        // Patient counts from appointments
+        this.patientsInLobby = this.todayAppointments.filter(a => a.status === 'pending' || a.status === 'confirmed').length;
+        this.patientsInTreatment = this.todayAppointments.filter(a => a.status === 'confirmed').length;
+
+        // Completion percentage
+        const totalAppts = this.todayAppointments.length;
+        const completedAppts = this.todayAppointments.filter(a => a.status === 'completed').length;
+        this.completionPct = totalAppts > 0 ? Math.round((completedAppts / totalAppts) * 100) : 0;
       } catch (e) {
         // ignore calendar errors
       }
+
+      // Build alerts
+      this._buildAlerts();
 
       // Load saved goals
       this._loadGoals();
@@ -179,6 +237,75 @@ export class CrmHomeComponent implements OnInit {
       this.isLoading = false;
     }
   }
+
+  // ─── Schedule helpers ───
+
+  getAppointmentsForHour(hour: string): Appointment[] {
+    const h24 = this._parseHourTo24(hour);
+    return this.todayAppointments.filter(a => {
+      const time = a.appointment_time || '';
+      const appointmentHour = parseInt(time.split(':')[0], 10);
+      return appointmentHour === h24;
+    });
+  }
+
+  getBlockColor(appt: Appointment): string {
+    const service = (appt.service || '').toLowerCase();
+    if (service.includes('hydra') || service.includes('facial') || service.includes('limpieza')) return 'green';
+    if (service.includes('botox') || service.includes('consult')) return 'blue';
+    if (service.includes('filler') || service.includes('relleno')) return 'yellow';
+    if (service.includes('laser') || service.includes('depilac')) return 'red';
+    return 'purple';
+  }
+
+  private _parseHourTo24(hour: string): number {
+    const match = hour.match(/^(\d+):/);
+    if (!match) return -1;
+    let h = parseInt(match[1], 10);
+    if (hour.includes('PM') && h !== 12) h += 12;
+    if (hour.includes('AM') && h === 12) h = 0;
+    return h;
+  }
+
+  // ─── KPI computation ───
+
+  private _computeKPIs(
+    sales: Sale[],
+    dateFrom: Date,
+    dateTo: Date,
+    saleTotal: (s: Sale) => number
+  ): void {
+    // Daily revenue change vs average
+    const diffDays = Math.max(1, Math.ceil((dateTo.getTime() - dateFrom.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+    const avgDaily = this.monthSalesAmount / diffDays;
+    this.dailyRevenueChange = avgDaily > 0 ? Math.round(((this.dailyRevenue - avgDaily) / avgDaily) * 100) : 0;
+
+    // Monthly goal percentage
+    this.monthGoalPct = this.goals.monthly > 0 ? Math.min(100, Math.round((this.monthSalesAmount / this.goals.monthly) * 100)) : 0;
+
+    // Daily goal percentage
+    this.dailyGoalPct = this.goals.daily > 0 ? Math.min(100, Math.round((this.dailyRevenue / this.goals.daily) * 100)) : 0;
+  }
+
+  // ─── Alerts ───
+
+  private _buildAlerts(): void {
+    this.criticalAlerts = [];
+    if (this.pendingSalesCount > 0) {
+      this.criticalAlerts.push({ text: `${this.pendingSalesCount} venta(s) pendientes`, type: 'yellow' });
+    }
+    if (this.pendingApptsCount > 0) {
+      this.criticalAlerts.push({ text: `${this.pendingApptsCount} cita(s) sin confirmar`, type: 'blue' });
+    }
+    if (this.goals.daily > 0 && this.dailyRevenue < this.goals.daily * 0.5) {
+      this.criticalAlerts.push({ text: 'Meta diaria por debajo del 50%', type: 'red' });
+    }
+    if (this.goals.monthly > 0 && this.monthGoalPct < 60) {
+      this.criticalAlerts.push({ text: `Meta mensual al ${this.monthGoalPct}%`, type: 'red' });
+    }
+  }
+
+  // ─── Event handlers ───
 
   onPeriodChange(event: Event): void {
     const value = (event.target as HTMLSelectElement | null)?.value as any;
@@ -207,7 +334,7 @@ export class CrmHomeComponent implements OnInit {
 
   formatMoney(value: number): string {
     const n = Number(value) || 0;
-    return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return 'Q' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
   #formatError(err: any): string {
@@ -220,6 +347,10 @@ export class CrmHomeComponent implements OnInit {
     try {
       const raw = localStorage.getItem('dashboard_goals');
       if (raw) this.goals = JSON.parse(raw);
+      // Recompute after loading goals
+      this.monthGoalPct = this.goals.monthly > 0 ? Math.min(100, Math.round((this.monthSalesAmount / this.goals.monthly) * 100)) : 0;
+      this.dailyGoalPct = this.goals.daily > 0 ? Math.min(100, Math.round((this.dailyRevenue / this.goals.daily) * 100)) : 0;
+      this._buildAlerts();
     } catch (e) {
       // ignore
     }
@@ -228,6 +359,10 @@ export class CrmHomeComponent implements OnInit {
   saveGoals(): void {
     try {
       localStorage.setItem('dashboard_goals', JSON.stringify(this.goals));
+      // Recompute KPIs
+      this.monthGoalPct = this.goals.monthly > 0 ? Math.min(100, Math.round((this.monthSalesAmount / this.goals.monthly) * 100)) : 0;
+      this.dailyGoalPct = this.goals.daily > 0 ? Math.min(100, Math.round((this.dailyRevenue / this.goals.daily) * 100)) : 0;
+      this._buildAlerts();
     } catch (e) {
       // ignore
     }
@@ -257,6 +392,8 @@ export class CrmHomeComponent implements OnInit {
     }
   }
 
+  // ─── Chart builders ───
+
   #buildCharts(sales: Sale[], dateFrom: Date, dateTo: Date): void {
     const fmt = (d: Date): string => {
       const y = d.getFullYear();
@@ -265,14 +402,13 @@ export class CrmHomeComponent implements OnInit {
       return `${y}-${m}-${day}`;
     };
 
-    // Day labels for current month range
     const labels: string[] = [];
     const dayKeys: string[] = [];
     const cursor = new Date(dateFrom);
     while (cursor <= dateTo) {
       const key = fmt(cursor);
       dayKeys.push(key);
-      labels.push(key.slice(5)); // MM-DD
+      labels.push(key.slice(5));
       cursor.setDate(cursor.getDate() + 1);
     }
 
@@ -329,6 +465,21 @@ export class CrmHomeComponent implements OnInit {
       ]
     };
 
+    // Sparkline for pulse card
+    this.sparklineData = {
+      labels: labels.slice(-14),
+      datasets: [{
+        data: dayKeys.slice(-14).map(k => amountByDay.get(k) ?? 0),
+        borderColor: '#22c55e',
+        backgroundColor: 'rgba(34,197,94,0.1)',
+        borderWidth: 1.5,
+        fill: true,
+        tension: 0.4,
+        pointRadius: 0
+      }]
+    };
+
+    // Payment chart
     const paymentLabels: string[] = [];
     const paymentCounts: number[] = [];
     const byPayment = new Map<string, number>();
@@ -362,6 +513,95 @@ export class CrmHomeComponent implements OnInit {
     };
   }
 
+  #buildBarCharts(sales: Sale[], dateFrom: Date, dateTo: Date): void {
+    const fmt = (d: Date): string => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+
+    const saleTotal = (s: Sale): number => {
+      const items = Array.isArray(s.items) ? s.items : [];
+      const subtotal = items.reduce((acc, it) => acc + Number(it.price || 0) * Number(it.quantity || 0), 0);
+      const discount = Number(s.discount || 0);
+      return Math.max(0, subtotal - discount);
+    };
+
+    // Financial Bar: daily amounts
+    const labels: string[] = [];
+    const dayKeys: string[] = [];
+    const cursor = new Date(dateFrom);
+    while (cursor <= dateTo) {
+      const key = fmt(cursor);
+      dayKeys.push(key);
+      labels.push(key.slice(8)); // DD only
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    const amountByDay = new Map<string, number>();
+    for (const key of dayKeys) amountByDay.set(key, 0);
+    for (const s of sales) {
+      const created = typeof s.created_at === 'string' ? s.created_at : '';
+      const dayKey = created.slice(0, 10);
+      if (amountByDay.has(dayKey)) {
+        amountByDay.set(dayKey, (amountByDay.get(dayKey) ?? 0) + saleTotal(s));
+      }
+    }
+
+    const brandPrimary = getStyle('--cui-primary') ?? '#0d6efd';
+    const brandSuccess = getStyle('--cui-success') ?? '#198754';
+
+    this.financialBarData = {
+      labels,
+      datasets: [{
+        label: 'Ventas por día',
+        data: dayKeys.map(k => amountByDay.get(k) ?? 0),
+        backgroundColor: brandPrimary,
+        borderRadius: 4,
+        maxBarThickness: 16
+      }]
+    };
+
+    // Category Bar: by payment method
+    const byPayment = new Map<string, number>();
+    const byPaymentAmount = new Map<string, number>();
+    for (const s of sales) {
+      const method = String(s.payment_method || 'N/A').trim() || 'N/A';
+      byPayment.set(method, (byPayment.get(method) ?? 0) + 1);
+      byPaymentAmount.set(method, (byPaymentAmount.get(method) ?? 0) + saleTotal(s));
+    }
+
+    const catLabels: string[] = [];
+    const catCounts: number[] = [];
+    const catAmounts: number[] = [];
+    for (const [k] of Array.from(byPayment.entries()).sort((a, b) => b[1] - a[1]).slice(0, 8)) {
+      catLabels.push(k);
+      catCounts.push(byPayment.get(k) ?? 0);
+      catAmounts.push(byPaymentAmount.get(k) ?? 0);
+    }
+
+    this.categoryBarData = {
+      labels: catLabels,
+      datasets: [
+        {
+          label: 'Cantidad',
+          data: catCounts,
+          backgroundColor: brandPrimary,
+          borderRadius: 4,
+          maxBarThickness: 20
+        },
+        {
+          label: 'Monto',
+          data: catAmounts,
+          backgroundColor: brandSuccess,
+          borderRadius: 4,
+          maxBarThickness: 20
+        }
+      ]
+    };
+  }
+
   #buildLineChartOptions(): ChartOptions<'line'> {
     const colorBorderTranslucent = getStyle('--cui-border-color-translucent');
     const colorBody = getStyle('--cui-body-color');
@@ -373,17 +613,14 @@ export class CrmHomeComponent implements OnInit {
     return {
       maintainAspectRatio: false,
       plugins: {
-        legend: {
-          display: true
-        },
+        legend: { display: true },
         tooltip: {
           callbacks: {
             label: (ctx) => {
               const y = (ctx.parsed as any)?.y;
               const label = ctx.dataset?.label ? `${ctx.dataset.label}: ` : '';
               if (ctx.dataset?.yAxisID === 'y1') {
-                const n = Number(y) || 0;
-                return `${label}${n}`;
+                return `${label}${Number(y) || 0}`;
               }
               return `${label}${formatMoney(Number(y) || 0)}`;
             }
@@ -392,36 +629,18 @@ export class CrmHomeComponent implements OnInit {
       },
       scales: {
         x: {
-          grid: {
-            color: colorBorderTranslucent,
-            drawOnChartArea: false
-          },
-          ticks: {
-            color: colorBody,
-            maxRotation: 0,
-            maxTicksLimit: 10
-          }
+          grid: { color: colorBorderTranslucent, drawOnChartArea: false },
+          ticks: { color: colorBody, maxRotation: 0, maxTicksLimit: 10 }
         },
         y: {
-          grid: {
-            color: colorBorderTranslucent
-          },
-          ticks: {
-            color: colorBody,
-            callback: (value) => formatMoney(Number(value) || 0)
-          },
+          grid: { color: colorBorderTranslucent },
+          ticks: { color: colorBody, callback: (value) => formatMoney(Number(value) || 0) },
           beginAtZero: true
         },
         y1: {
           position: 'right',
-          grid: {
-            drawOnChartArea: false
-          },
-          ticks: {
-            color: colorBody,
-            precision: 0,
-            stepSize: 1
-          },
+          grid: { drawOnChartArea: false },
+          ticks: { color: colorBody, precision: 0, stepSize: 1 },
           beginAtZero: true
         }
       }
@@ -431,10 +650,29 @@ export class CrmHomeComponent implements OnInit {
   #buildDoughnutChartOptions(): ChartOptions<'doughnut'> {
     return {
       maintainAspectRatio: false,
+      plugins: { legend: { display: true, position: 'bottom' } }
+    };
+  }
+
+  #buildBarChartOptions(): ChartOptions<'bar'> {
+    const colorBorderTranslucent = getStyle('--cui-border-color-translucent');
+    const colorBody = getStyle('--cui-body-color');
+
+    return {
+      maintainAspectRatio: false,
       plugins: {
-        legend: {
-          display: true,
-          position: 'bottom'
+        legend: { display: true },
+        tooltip: { mode: 'index', intersect: false }
+      },
+      scales: {
+        x: {
+          grid: { color: colorBorderTranslucent, drawOnChartArea: false },
+          ticks: { color: colorBody, maxRotation: 0, maxTicksLimit: 15 }
+        },
+        y: {
+          grid: { color: colorBorderTranslucent },
+          ticks: { color: colorBody },
+          beginAtZero: true
         }
       }
     };

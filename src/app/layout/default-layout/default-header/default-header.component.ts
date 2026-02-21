@@ -94,12 +94,12 @@ export class DefaultHeaderComponent extends HeaderComponent {
     try {
       const me = await firstValueFrom(this.#auth.me());
       this.currentUser = me?.user ?? null;
-      const role = me?.user?.role;
+      const role = String(me?.user?.role ?? '').toLowerCase();
       const isSuperadmin = role === 'superadmin';
       const isAdmin = role === 'admin' || isSuperadmin;
       const isDoctor = role === 'doctor';
       const isStaff = role === 'staff';
-      const isPatient = role === 'patient';
+      const isPatient = role === 'patient' || role === 'paciente';
 
       this.canSeePatients = isAdmin || isDoctor || isStaff;
       this.canSeeAppointments = isAdmin || isDoctor || isStaff || isPatient;

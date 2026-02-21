@@ -18,6 +18,8 @@ export interface Product {
   stock?: number | null;
   active?: boolean;
   image_url?: string | null;
+  requires_attendance?: boolean;
+  attendance_sessions?: number;
 }
 
 export interface ProductsListQuery {
@@ -38,6 +40,8 @@ export interface CreateProductRequest {
   description?: string;
   stock?: number;
   active?: boolean;
+  requires_attendance?: boolean;
+  attendance_sessions?: number;
 }
 
 export interface UpdateProductRequest extends Partial<CreateProductRequest> {}

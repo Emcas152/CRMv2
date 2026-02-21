@@ -23,7 +23,7 @@ export const routes: Routes = [
   {
     path: 'documents',
     loadComponent: () => import('./documents/documents-page.component').then(m => m.DocumentsPageComponent),
-    canMatch: [requireRoles(['superadmin', 'admin', 'doctor', 'patient'])],
+    canMatch: [requireRoles(['superadmin', 'admin', 'doctor', 'staff', 'patient'])],
     data: { title: 'Documentos' }
   },
   {
@@ -84,10 +84,5 @@ export const routes: Routes = [
     path: 'profile',
     loadComponent: () => import('./profile/profile-page.component').then(m => m.ProfilePageComponent),
     data: { title: 'Perfil' }
-  },
-  {
-    path: 'qr',
-    loadComponent: () => import('./qr/qr-page.component').then(m => m.QrPageComponent),
-    data: { title: 'QR' }
   }
 ];

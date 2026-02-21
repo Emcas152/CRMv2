@@ -43,7 +43,7 @@ if (empty($name) || empty($email)) {
 try {
     $db = Database::getInstance();
     // Ensure nit column exists
-    try { $db->execute("ALTER TABLE patients ADD COLUMN IF NOT EXISTS nit VARCHAR(100) NULL", []); } catch (Exception $e) {}
+    try { $db->execute("ALTER TABLE patients ADD COLUMN nit VARCHAR(100) NULL", []); } catch (Exception $e) {}
 
     // Check duplicate email
     $existing = $db->fetchOne('SELECT id FROM patients WHERE email = ?', [$email]);

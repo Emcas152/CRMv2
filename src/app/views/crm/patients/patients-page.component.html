@@ -1,132 +1,298 @@
-<c-row>
-  <c-col xs="12">
-    <c-card class="mb-4">
-      <c-card-header class="patients-header align-items-center">
-        <div class="patients-title">
-          <h2 class="mb-0">Pacientes</h2>
-          <div class="text-body-secondary small">Total: {{ total }}</div>
+<!-- Alerts -->
+<div *ngIf="error" class="alert alert-danger mx-2 mt-2 mb-0">{{ error }}</div>
+<div *ngIf="actionError" class="alert alert-danger mx-2 mt-2 mb-0">{{ actionError }}</div>
+<div *ngIf="actionInfo" class="alert alert-success mx-2 mt-2 mb-0">{{ actionInfo }}</div>
+
+<div class="patients-page">
+
+  <!-- ═══ Header ═══ -->
+  <div class="patients-topbar">
+    <div class="patients-title-area">
+      <h2>Gestión Pacientes <span class="text-body-secondary" style="font-size:0.85rem;font-weight:400"> &gt; {{ total }} Pacientes</span></h2>
+      <div class="patients-subtitle">{{ total | number:'1.0-0' }} registros ({{ patients.length }} visibles)</div>
+    </div>
+
+    <div class="topbar-actions">
+      <form [formGroup]="filterForm" (ngSubmit)="refresh()" class="search-group">
+        <input class="form-control form-control-sm" style="width:180px" placeholder="Buscar paciente…" formControlName="search" />
+        <button cButton color="success" size="sm" type="submit" [disabled]="isLoading">
+          {{ isLoading ? 'Buscando…' : 'Search' }}
+        </button>
+      </form>
+      <button class="btn btn-nuevo" type="button" (click)="toggleCreateForm()">Nuevo Paciente</button>
+    </div>
+  </div>
+
+  <!-- ═══ QR Display ═══ -->
+  <div *ngIf="qrResult" class="section-card">
+    <div class="section-header">
+      <h5 class="section-title">QR Paciente #{{ qrResult.patient_id }}</h5>
+      <button class="section-close" (click)="qrResult = null">&#10005;</button>
+    </div>
+    <div class="small text-body-secondary mb-2">Escanéalo en el TPV para cargar sus datos de facturación.</div>
+    <div class="qr-display">
+      <div *ngIf="qrDataUrl" class="qr-image">
+        <img [src]="qrDataUrl" alt="QR" />
+      </div>
+      <div>
+        <div class="small text-body-secondary">Código</div>
+        <div class="fw-semibold">{{ qrCodeText }}</div>
+        <div class="mt-2 d-flex gap-2">
+          <button cButton color="primary" size="sm" type="button" (click)="copyQrCode()">Copiar código</button>
+          <button cButton color="secondary" size="sm" type="button" (click)="downloadQr()" [disabled]="!qrDataUrl">Descargar</button>
         </div>
+      </div>
+    </div>
+  </div>
 
-        <div class="d-flex align-items-center gap-3">
-          <form [formGroup]="filterForm" (ngSubmit)="refresh()" class="d-flex gap-2 align-items-center">
-            <input class="form-control form-control-sm" placeholder="Buscar paciente" formControlName="search" />
-            <button cButton color="primary" size="sm" type="submit" [disabled]="isLoading">{{ isLoading ? 'Cargando…' : 'Buscar' }}</button>
-          </form>
-          <button cButton color="warning" class="btn-lg rounded-pill" type="button" (click)="startCreate()" [disabled]="isSaving || isLoading">Nuevo Paciente</button>
+  <!-- ═══ Create / Edit Patient Modal ═══ -->
+  <c-modal id="patientModal" [visible]="showCreateForm" (visibleChange)="onModalVisibleChange($event)" [backdrop]="true">
+    <c-modal-header>
+      <h5 cModalTitle>{{ editingId === null ? 'Crear Nuevo Paciente' : 'Editar Paciente #' + editingId }}</h5>
+      <button cButtonClose (click)="closeModal()"></button>
+    </c-modal-header>
+    <c-modal-body>
+      <div *ngIf="submitError" class="alert alert-danger mb-3">{{ submitError }}</div>
+      <form [formGroup]="form">
+        <div class="row g-2">
+          <div class="col-12 mb-2">
+            <label class="form-label">Nombre Completo</label>
+            <input formControlName="name" class="form-control" placeholder="Nombre completo" />
+          </div>
+
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Estado Civil</label>
+            <input formControlName="marital_status" class="form-control" />
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Nombre del Esposo</label>
+            <input formControlName="spouse_name" class="form-control" />
+          </div>
+
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Fecha de Nacimiento</label>
+            <input formControlName="birthday" class="form-control" type="date" />
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Edad</label>
+            <input formControlName="age" class="form-control" />
+          </div>
+
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Lugar de Nacimiento</label>
+            <input formControlName="place_of_birth" class="form-control" />
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">E-mail</label>
+            <input formControlName="email" class="form-control" type="email" placeholder="email@ejemplo.com" />
+          </div>
+
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Nacionalidad</label>
+            <input formControlName="nationality" class="form-control" />
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">DPI</label>
+            <input formControlName="dpi" class="form-control" />
+          </div>
+
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Tipo de Sangre</label>
+            <input formControlName="blood_type" class="form-control" />
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Profesión</label>
+            <input formControlName="profession" class="form-control" />
+          </div>
+
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Lugar de Trabajo</label>
+            <input formControlName="workplace" class="form-control" />
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Dirección de Domicilio</label>
+            <input formControlName="address" class="form-control" />
+          </div>
+
+          <div class="col-md-6 mb-2">
+            <label class="form-label">No. De Teléfono de casa</label>
+            <input formControlName="home_phone" class="form-control" />
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">No. De Celular</label>
+            <input formControlName="mobile_phone" class="form-control" />
+          </div>
+
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Referido Por</label>
+            <input formControlName="referred_by" class="form-control" />
+          </div>
+          <div class="col-md-6 mb-2">
+            <label class="form-label">Motivo de la Consulta</label>
+            <input formControlName="reason_for_consultation" class="form-control" />
+          </div>
+
+          <div class="col-12 mb-2">
+            <label class="form-label">Emitir Factura a Nombre de</label>
+            <input formControlName="invoice_name" class="form-control" />
+          </div>
+
+          <div class="col-md-6 mb-2">
+            <label class="form-label">NIT</label>
+            <input formControlName="nit" class="form-control" />
+          </div>
         </div>
-      </c-card-header>
+      </form>
+    </c-modal-body>
+    <c-modal-footer>
+      <button cButton color="success" type="button" (click)="save()" [disabled]="isSaving">{{ isSaving ? 'Guardando…' : 'Guardar' }}</button>
+      <button cButton color="secondary" type="button" (click)="closeModal()">Cancelar</button>
+    </c-modal-footer>
+  </c-modal>
 
-      <c-card-body>
-        <c-alert *ngIf="error" color="danger" class="mb-3">{{ error }}</c-alert>
-        <c-alert *ngIf="submitError" color="danger" class="mb-3">{{ submitError }}</c-alert>
-        <c-alert *ngIf="actionError" color="danger" class="mb-3">{{ actionError }}</c-alert>
-        <c-alert *ngIf="actionInfo" color="success" class="mb-3">{{ actionInfo }}</c-alert>
+  <!-- ═══ Patients Table: Recent ═══ -->
+  <div class="section-card">
+    <div class="section-header">
+      <h5 class="section-title">Clientes Recientes</h5>
+      <button class="btn-action btn-doc" type="button" [routerLink]="['/crm/documents']">Documentos</button>
+    </div>
 
-        <div *ngIf="qrResult" class="mb-3">
-          <div class="small text-body-secondary">QR paciente #{{ qrResult.patient_id }}</div>
-          <div class="small text-body-secondary">Escanéalo en el TPV para cargar sus datos de facturación.</div>
+    <div *ngIf="isLoading" class="text-center py-4">
+      <div class="spinner-border spinner-border-sm text-primary"></div>
+      <span class="ms-2 text-body-secondary">Cargando…</span>
+    </div>
 
-          <div class="mt-2 d-flex flex-wrap gap-3 align-items-start">
-            <div *ngIf="qrDataUrl">
-              <img [src]="qrDataUrl" [attr.width]="qrSize" [attr.height]="qrSize" alt="QR" style="max-width:220px;height:auto;" />
-            </div>
-            <div class="small">
-              <div class="text-muted">Código</div>
-              <div class="fw-semibold">{{ qrCodeText }}</div>
-              <div class="mt-2">
-                <button cButton color="primary" size="sm" type="button" (click)="copyQrCode()">Copiar código</button>
-                <button cButton color="secondary" size="sm" type="button" class="ms-2" (click)="downloadQr()" [disabled]="!qrDataUrl">Descargar</button>
+    <table *ngIf="!isLoading" class="patients-table">
+      <thead>
+        <tr>
+          <th>Nombre Completo</th>
+          <th>Email</th>
+          <th>Teléfono</th>
+          <th>NIT</th>
+          <th>Puntos</th>
+          <th></th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let p of patients; trackBy: trackByPatient">
+          <!-- Name + Avatar -->
+          <td>
+            <div class="patient-name-cell">
+              <div class="patient-avatar">{{ p.name ? p.name.charAt(0).toUpperCase() : '?' }}</div>
+              <div>
+                <div class="patient-name">{{ p.name }}</div>
+                <div class="patient-service">{{ p.birthday || '' }}</div>
               </div>
             </div>
-          </div>
-        </div>
+          </td>
+          <!-- Email -->
+          <td>{{ p.email }}</td>
+          <!-- Phone -->
+          <td>{{ p.phone || '-' }}</td>
+          <!-- NIT -->
+          <td>{{ p.nit || '-' }}</td>
+          <!-- Points -->
+          <td>{{ p.loyalty_points ?? 0 | number:'1.0-0' }}</td>
+          <!-- QR icon -->
+          <td>
+            <button class="btn-action btn-qr" type="button" (click)="showQr(p)" [disabled]="actingId === p.id" title="Ver QR">
+              &#9638;
+            </button>
+          </td>
+          <!-- Actions -->
+          <td>
+            <div class="row-actions">
+              <button class="btn-action btn-pts" type="button" (click)="loyaltyAdd(p)" [disabled]="actingId === p.id" title="Agregar puntos">+ Puntos</button>
+              <button class="btn-action btn-edit" type="button" (click)="startEditAndShow(p)" title="Editar">Editar</button>
+              <button class="btn-action btn-del" type="button" (click)="delete(p)" title="Eliminar">&#10005;</button>
 
-        <!-- Create / Edit form -->
-        <form cForm class="mb-4" [formGroup]="form" (ngSubmit)="save()">
-          <div class="mb-2">
-            <strong>{{ editingId === null ? 'Crear paciente' : 'Editar paciente #' + editingId }}</strong>
-          </div>
-          <c-row class="g-3">
-            <c-col md="4">
-              <label cLabel for="name">Nombre</label>
-              <input id="name" cFormControl type="text" formControlName="name" />
-              <div *ngIf="form.controls.name.touched && form.controls.name.invalid" class="text-danger small mt-1">Nombre requerido.</div>
-            </c-col>
-            <c-col md="4">
-              <label cLabel for="email">Email</label>
-              <input id="email" cFormControl type="email" formControlName="email" />
-              <div *ngIf="form.controls.email.touched && form.controls.email.invalid" class="text-danger small mt-1">Email válido requerido.</div>
-            </c-col>
-            <c-col md="4">
-              <label cLabel for="phone">Teléfono</label>
-              <input id="phone" cFormControl type="text" formControlName="phone" />
-            </c-col>
+              <span *ngIf="rowStatusById[p.id]" class="small text-body-secondary">{{ rowStatusById[p.id] }}</span>
+            </div>
+          </td>
+        </tr>
+        <tr *ngIf="patients.length === 0">
+          <td colspan="7" class="text-center text-body-secondary py-3">Sin pacientes registrados</td>
+        </tr>
+      </tbody>
+    </table>
 
-            <c-col md="3">
-              <label cLabel for="birthday">Fecha de nacimiento</label>
-              <input id="birthday" cFormControl type="date" formControlName="birthday" />
-            </c-col>
-            <c-col md="6">
-              <label cLabel for="address">Dirección</label>
-              <input id="address" cFormControl type="text" formControlName="address" />
-            </c-col>
-            <c-col md="3">
-              <label cLabel for="nit">NIT</label>
-              <input id="nit" cFormControl type="text" formControlName="nit" />
-            </c-col>
+    <!-- Bottom actions -->
+    <div class="table-bottom-actions" *ngIf="patients.length > 0">
+      <button class="btn-action btn-pts" type="button" (click)="toggleCreateForm()">+ Paciente</button>
+    </div>
 
-            <c-col xs="12" class="d-flex gap-2">
-              <button cButton color="success" type="submit" [disabled]="isSaving">{{ isSaving ? 'Guardando…' : (editingId === null ? 'Crear' : 'Guardar') }}</button>
-              <button *ngIf="editingId !== null" cButton color="secondary" type="button" (click)="cancelEdit()" [disabled]="isSaving">Cancelar</button>
-            </c-col>
-          </c-row>
-        </form>
+    <!-- Pagination -->
+    <div class="pagination-bar" *ngIf="total > 0">
+      <button cButton color="light" size="sm" type="button" (click)="prevPage()" [disabled]="filterForm.controls.page.value <= 1">&lt;</button>
+      <span class="small text-body-secondary">Página {{ filterForm.controls.page.value }} de {{ maxPage }}</span>
+      <button cButton color="light" size="sm" type="button" (click)="nextPage()" [disabled]="filterForm.controls.page.value >= maxPage">&gt;</button>
+    </div>
+  </div>
 
-        <!-- Patients table -->
-        <table cTable [striped]="true">
-          <thead>
-            <tr>
-              <th scope="col">ID</th>
-              <th scope="col">Nombre</th>
-              <th scope="col">Email</th>
-              <th scope="col">Teléfono</th>
-              <th scope="col">NIT</th>
-              <th scope="col">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            <ng-container *ngIf="patients.length; else empty">
-              <tr *ngFor="let p of patients; trackBy: trackByPatient">
-                <td>{{ p.id }}</td>
-                <td>{{ p.name }}</td>
-                <td>{{ p.email }}</td>
-                <td>{{ p.phone ?? '' }}</td>
-                <td>{{ p.nit ?? '' }}</td>
-                <td class="d-flex flex-wrap gap-2 align-items-center">
-                  <button cButton color="secondary" size="sm" type="button" (click)="startEdit(p)">Editar</button>
-                  <button cButton color="danger" size="sm" type="button" (click)="delete(p)">Eliminar</button>
-                  <button cButton color="info" size="sm" type="button" (click)="showQr(p)" [disabled]="actingId === p.id">QR</button>
+  <!-- ═══ Patient Engagement Table ═══ -->
+  <div class="section-card" *ngIf="patients.length > 0">
+    <div class="section-header">
+      <h5 class="section-title">Patient Engagement</h5>
+      <button class="btn-action btn-doc" type="button" [routerLink]="['/crm/documents']">Documentos</button>
+    </div>
 
-                  <input class="form-control form-control-sm" style="width: 110px" type="number" min="1" placeholder="Puntos"
-                    [value]="loyaltyPointsById[p.id] ?? ''" (input)="setLoyaltyPoints(p, $any($event.target).value)" />
-                  <button cButton color="success" size="sm" type="button" (click)="loyaltyAdd(p)" [disabled]="actingId === p.id">+Pts</button>
-                  <button cButton color="warning" size="sm" type="button" (click)="loyaltyRedeem(p)" [disabled]="actingId === p.id">-Pts</button>
+    <table class="patients-table">
+      <thead>
+        <tr>
+          <th>Nombre Completo</th>
+          <th>Email</th>
+          <th>Teléfono</th>
+          <th>Dirección</th>
+          <th>Puntos</th>
+          <th></th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let p of patients; trackBy: trackByPatient">
+          <td>
+            <div class="patient-name-cell">
+              <div class="patient-avatar">{{ p.name ? p.name.charAt(0).toUpperCase() : '?' }}</div>
+              <div>
+                <div class="patient-name">{{ p.name }}</div>
+                <div class="patient-service">{{ p.address || '' }}</div>
+              </div>
+            </div>
+          </td>
+          <td>{{ p.email }}</td>
+          <td>{{ p.phone || '-' }}</td>
+          <td>{{ p.address || '-' }}</td>
+          <td>{{ p.loyalty_points ?? 0 | number:'1.0-0' }}</td>
+          <td>
+            <button class="btn-action btn-qr" type="button" (click)="showQr(p)" [disabled]="actingId === p.id" title="QR">&#9638;</button>
+          </td>
+          <td>
+            <div class="row-actions">
+              <button class="btn-action btn-pts" type="button" (click)="loyaltyAdd(p)" [disabled]="actingId === p.id">+ Puntos</button>
+              <button class="btn-action btn-pct" type="button" (click)="loyaltyRedeem(p)" [disabled]="actingId === p.id">- Puntos</button>
+              <button class="btn-action btn-noti" type="button" (click)="showQr(p)" [disabled]="actingId === p.id">QR</button>
 
-                  <input class="form-control form-control-sm" style="width: 170px" type="file" accept="image/*" (change)="uploadPhoto(p, $event, 'before')" [disabled]="actingId === p.id" title="Subir antes" />
-                  <input class="form-control form-control-sm" style="width: 170px" type="file" accept="image/*" (change)="uploadPhoto(p, $event, 'after')" [disabled]="actingId === p.id" title="Subir después" />
+              <!-- Photo uploads -->
+              <label class="btn-action btn-doc mb-0" style="cursor:pointer">
+                Antes
+                <input type="file" accept="image/*" (change)="uploadPhoto(p, $event, 'before')" [disabled]="actingId === p.id" hidden />
+              </label>
+              <label class="btn-action btn-doc mb-0" style="cursor:pointer">
+                Después
+                <input type="file" accept="image/*" (change)="uploadPhoto(p, $event, 'after')" [disabled]="actingId === p.id" hidden />
+              </label>
 
-                  <span *ngIf="rowStatusById[p.id]" class="small text-body-secondary align-self-center">{{ rowStatusById[p.id] }}</span>
-                </td>
-              </tr>
-            </ng-container>
-            <ng-template #empty>
-              <tr>
-                <td colspan="6" class="text-center text-body-secondary">Sin datos</td>
-              </tr>
-            </ng-template>
-          </tbody>
-        </table>
-      </c-card-body>
-    </c-card>
-  </c-col>
-</c-row>
+              <span *ngIf="rowStatusById[p.id]" class="small text-body-secondary">{{ rowStatusById[p.id] }}</span>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="table-bottom-actions">
+      <button class="btn-action btn-noti" type="button" [routerLink]="['/crm/documents']">Documentos</button>
+    </div>
+  </div>
+
+</div>

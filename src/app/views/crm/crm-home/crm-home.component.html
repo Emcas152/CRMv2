@@ -1,234 +1,335 @@
-<c-row>
-  <c-col xs="12">
-    @if (deniedRoles) {
-      <c-alert color="warning" class="mb-4">
-        No tienes permisos para acceder a esa sección. Requerido: <strong>{{ deniedRoles }}</strong>.
-      </c-alert>
-    }
+<!-- Alerts -->
+<div *ngIf="deniedRoles" class="alert alert-warning mx-2 mt-2 mb-0">
+  No tienes permisos para acceder a esa sección. Requerido: <strong>{{ deniedRoles }}</strong>.
+</div>
+<div *ngIf="error" class="alert alert-danger mx-2 mt-2 mb-0">{{ error }}</div>
 
-    @if (error) {
-      <c-alert color="danger" class="mb-4">{{ error }}</c-alert>
-    }
-  </c-col>
-</c-row>
+<div class="dashboard">
 
-<c-row class="mt-3">
-  <c-col lg="8">
-    <c-card class="mb-3">
-      <c-card-body class="d-flex align-items-center gap-3">
-        <div>
-          <label class="small text-body-secondary">Periodo</label>
-          <select class="form-select form-select-sm" [value]="period" (change)="onPeriodChange($event)">
-            <option value="today">Hoy</option>
-            <option value="week">Esta semana</option>
-            <option value="month">Este mes</option>
-            <option value="custom">Personalizado</option>
-          </select>
-        </div>
+  <!-- Loading -->
+  <div *ngIf="isLoading" class="text-center py-5">
+    <div class="spinner-border text-primary" role="status"></div>
+    <div class="mt-2 text-body-secondary">Cargando dashboard…</div>
+  </div>
 
-        <div *ngIf="period === 'custom'" style="display:flex;gap:8px;align-items:center">
-          <input type="date" class="form-control form-control-sm" (change)="onDateFromChange($event)" />
-          <input type="date" class="form-control form-control-sm" (change)="onDateToChange($event)" />
+  <div *ngIf="!isLoading">
+
+    <!-- ═══ Top Bar ═══ -->
+    <div class="dashboard-topbar">
+      <div class="topbar-controls">
+        <select class="form-select form-select-sm" style="width:140px" [value]="period" (change)="onPeriodChange($event)">
+          <option value="today">Hoy</option>
+          <option value="week">Esta semana</option>
+          <option value="month">Este mes</option>
+          <option value="custom">Personalizado</option>
+        </select>
+        <div *ngIf="period === 'custom'" style="display:flex;gap:6px;align-items:center">
+          <input type="date" class="form-control form-control-sm" style="width:130px" (change)="onDateFromChange($event)" />
+          <input type="date" class="form-control form-control-sm" style="width:130px" (change)="onDateToChange($event)" />
           <button cButton color="primary" size="sm" (click)="load()">Aplicar</button>
         </div>
+      </div>
+      <button class="btn btn-sm btn-outline-secondary" (click)="showGoalsEditor = !showGoalsEditor">
+        Metas
+      </button>
+    </div>
 
-        <div class="ms-auto text-end">
-          <div class="small text-body-secondary">Meta mensual</div>
-          <div class="fw-semibold">{{ formatMoney(goals.monthly || 0) }}</div>
+    <!-- Goals Editor (collapsible) -->
+    <div *ngIf="showGoalsEditor" class="dash-card mb-3">
+      <div class="dash-card-header">
+        <h5 class="dash-card-title">Metas de facturación</h5>
+        <button class="dash-card-close" (click)="showGoalsEditor = false">&#10005;</button>
+      </div>
+      <div class="goals-inline">
+        <div>
+          <label class="form-label small mb-0">Diaria</label>
+          <input type="number" class="form-control form-control-sm" [value]="goals.daily" (change)="onGoalChange('daily', $event)" />
         </div>
-      </c-card-body>
-    </c-card>
-  </c-col>
-
-  <c-col lg="4">
-    <c-card class="mb-3">
-      <c-card-header><strong>Metas de facturación</strong></c-card-header>
-      <c-card-body>
-        <div class="mb-2 small text-body-secondary">Diaria</div>
-        <input type="number" class="form-control form-control-sm mb-2" [value]="goals.daily" (change)="onGoalChange('daily', $event)" />
-        <div class="mb-2 small text-body-secondary">Semanal</div>
-        <input type="number" class="form-control form-control-sm mb-2" [value]="goals.weekly" (change)="onGoalChange('weekly', $event)" />
-        <div class="mb-2 small text-body-secondary">Mensual</div>
-        <input type="number" class="form-control form-control-sm mb-2" [value]="goals.monthly" (change)="onGoalChange('monthly', $event)" />
-        <div class="d-flex justify-content-end">
-          <button cButton color="success" size="sm" (click)="saveGoals()">Guardar</button>
+        <div>
+          <label class="form-label small mb-0">Semanal</label>
+          <input type="number" class="form-control form-control-sm" [value]="goals.weekly" (change)="onGoalChange('weekly', $event)" />
         </div>
-      </c-card-body>
-    </c-card>
-  </c-col>
-</c-row>
+        <div>
+          <label class="form-label small mb-0">Mensual</label>
+          <input type="number" class="form-control form-control-sm" [value]="goals.monthly" (change)="onGoalChange('monthly', $event)" />
+        </div>
+        <button cButton color="success" size="sm" (click)="saveGoals()" class="align-self-end">Guardar</button>
+      </div>
+    </div>
 
-<c-row class="g-4">
-  <c-col sm="6" xl="3">
-    <c-card>
-      <c-card-body>
-        <div class="text-body-secondary small">Ventas del mes (registros)</div>
-        <div class="fs-4 fw-semibold">{{ monthSalesTotal }}</div>
-        <div class="small text-body-secondary">Cargadas: {{ monthSalesCount }}</div>
-      </c-card-body>
-    </c-card>
-  </c-col>
-  <c-col sm="6" xl="3">
-    <c-card>
-      <c-card-body>
-        <div class="text-body-secondary small">Total estimado del mes</div>
-        <div class="fs-4 fw-semibold">{{ formatMoney(monthSalesAmount) }}</div>
-        <div class="small text-body-secondary">Según ventas cargadas</div>
-      </c-card-body>
-    </c-card>
-  </c-col>
-  <c-col sm="6" xl="3">
-    <c-card>
-      <c-card-body>
-        <div class="text-body-secondary small">Ventas de hoy</div>
-        <div class="fs-4 fw-semibold">{{ todaySalesCount }}</div>
-        <div class="small text-body-secondary">Según ventas cargadas</div>
-      </c-card-body>
-    </c-card>
-  </c-col>
-  <c-col sm="6" xl="3">
-    <c-card>
-      <c-card-body>
-        <div class="text-body-secondary small">Pendientes</div>
-        <div class="fs-4 fw-semibold">{{ pendingSalesCount }}</div>
-        <div class="small text-body-secondary">Estado = pending</div>
-      </c-card-body>
-    </c-card>
-  </c-col>
-</c-row>
+    <!-- ═══ Pulse Cards ═══ -->
+    <div class="pulse-cards">
 
-<c-row class="mt-4 g-4">
-  <c-col lg="8">
-    <c-card class="mb-4">
-      <c-card-header><strong>Ventas del mes</strong></c-card-header>
-      <c-card-body>
-        <c-chart type="line" [data]="salesByDayChartData" [options]="salesByDayChartOptions" [height]="300" class="w-100" />
-      </c-card-body>
-    </c-card>
-  </c-col>
+      <!-- 1. Daily Revenue -->
+      <div class="pulse-card pulse-card-accent">
+        <div class="pulse-card-label">Ventas del día</div>
+        <div class="pulse-card-value">{{ formatMoney(dailyRevenue) }}</div>
+        <div class="pulse-card-sub" [class.pulse-positive]="dailyRevenueChange >= 0" [class.pulse-negative]="dailyRevenueChange < 0">
+          <span *ngIf="dailyRevenueChange >= 0">&#9650;</span>
+          <span *ngIf="dailyRevenueChange < 0">&#9660;</span>
+          {{ dailyRevenueChange >= 0 ? '+' : '' }}{{ dailyRevenueChange }}% vs promedio
+        </div>
+      </div>
 
-  <c-col lg="4">
-    <c-card class="mb-4">
-      <c-card-header><strong>Ventas por método</strong></c-card-header>
-      <c-card-body>
-        <c-chart type="doughnut" [data]="salesByPaymentChartData" [options]="salesByPaymentChartOptions" [height]="300" class="w-100" />
-      </c-card-body>
-    </c-card>
-  </c-col>
-</c-row>
+      <!-- 2. Monthly Revenue -->
+      <div class="pulse-card">
+        <div class="pulse-card-label">Ingresos del mes</div>
+        <div class="pulse-card-value">{{ formatMoney(monthSalesAmount) }}</div>
+        <div class="pulse-card-sub pulse-neutral">{{ monthSalesCount }} ventas registradas</div>
+        <div class="pulse-mini-chart">
+          <c-chart type="line" [data]="sparklineData" [options]="sparklineOptions" [height]="40" class="w-100" />
+        </div>
+      </div>
 
-<c-row class="mt-4">
-  <c-col lg="8">
-    <c-card class="mb-4">
-      <c-card-header class="d-flex align-items-center justify-content-between">
-        <strong>Últimas ventas</strong>
-        <a cButton color="primary" size="sm" [routerLink]="['/crm/sales']">Ver ventas</a>
-      </c-card-header>
-      <c-card-body>
-        @if (isLoading) {
-          <div class="text-body-secondary">Cargando…</div>
-        } @else {
-          <div class="table-responsive">
-            <table cTable>
-              <thead>
-              <tr>
-                <th>#</th>
-                <th>Paciente</th>
-                <th>Estado</th>
-                <th>Método</th>
-                <th>Creado</th>
-              </tr>
-              </thead>
-              <tbody>
-                @for (s of recentSales; track s.id) {
-                  <tr>
-                    <td>{{ s.id }}</td>
-                    <td>{{ s.patient_id }}</td>
-                    <td>{{ s.status || '-' }}</td>
-                    <td>{{ s.payment_method }}</td>
-                    <td>{{ s.created_at || '-' }}</td>
-                  </tr>
-                }
-                @if (!recentSales.length) {
-                  <tr>
-                    <td colspan="5" class="text-body-secondary">Sin ventas para mostrar.</td>
-                  </tr>
-                }
-              </tbody>
-            </table>
+      <!-- 3. Patients / Appointments -->
+      <div class="pulse-card">
+        <div class="pulse-card-label">Pacientes hoy</div>
+        <div class="mt-2">
+          <div class="clinic-item">
+            <div class="clinic-dot lobby"></div>
+            <div class="clinic-count">{{ patientsInLobby }}</div>
+            <div class="clinic-label">En espera</div>
           </div>
-        }
-      </c-card-body>
-    </c-card>
-  </c-col>
+          <div class="clinic-item">
+            <div class="clinic-dot treatment"></div>
+            <div class="clinic-count">{{ patientsInTreatment }}</div>
+            <div class="clinic-label">En tratamiento</div>
+          </div>
+        </div>
+      </div>
 
-  <c-col lg="4">
-    <c-card class="mb-4">
-      <c-card-header><strong>Calendario - Semana</strong></c-card-header>
-      <c-card-body>
-        <div class="d-flex flex-column">
-          <div class="d-flex gap-2 mb-2">
-            <div *ngFor="let d of weekDays" style="flex:1;min-width:0">
-              <div class="small text-body-secondary">{{ d }}</div>
-              <div *ngIf="weekAppointments[d] && weekAppointments[d].length">
-                <div *ngFor="let a of weekAppointments[d]" class="mb-1">
-                  <div class="small"><strong>{{ a.appointment_time }}</strong> — {{ a.patient_name || ('Paciente #' + a.patient_id) }}</div>
+      <!-- 4. Today's Completion -->
+      <div class="pulse-card" style="text-align:center">
+        <div class="pulse-card-label">Completado hoy</div>
+        <div class="completion-ring">
+          <svg viewBox="0 0 36 36" width="80" height="80">
+            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="3" />
+            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round"
+                  [attr.stroke-dasharray]="completionPct + ', 100'" />
+          </svg>
+          <div class="completion-value">{{ completionPct }}%</div>
+        </div>
+      </div>
+
+      <!-- 5. Monthly Goal -->
+      <div class="pulse-card">
+        <div class="pulse-card-label">Meta mensual</div>
+        <div class="pulse-card-value" style="font-size:1.1rem">{{ formatMoney(monthSalesAmount) }} / {{ formatMoney(goals.monthly || 0) }}</div>
+        <div class="goal-progress">
+          <div class="goal-bar">
+            <div class="goal-fill" [style.width.%]="monthGoalPct"></div>
+          </div>
+          <div class="goal-text">{{ monthGoalPct }}% alcanzado</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ═══ Main Grid: Schedule + Charts ═══ -->
+    <div class="dashboard-main">
+
+      <!-- Daily Schedule -->
+      <div class="dash-card">
+        <div class="dash-card-header">
+          <h5 class="dash-card-title">Agenda del día</h5>
+          <a cButton color="primary" size="sm" [routerLink]="['/crm/appointments']">Ver citas</a>
+        </div>
+
+        <div class="schedule-wrapper">
+          <div class="schedule-timeline">
+            <div *ngFor="let hour of scheduleHours" class="schedule-row">
+              <div class="schedule-time">{{ hour }}</div>
+              <div class="schedule-content">
+                <div *ngFor="let appt of getAppointmentsForHour(hour)"
+                     class="schedule-block" [ngClass]="getBlockColor(appt)">
+                  <div class="schedule-patient-info">
+                    <div class="schedule-patient">{{ appt.patient_name || ('Paciente #' + appt.patient_id) }}</div>
+                    <div class="schedule-service">{{ appt.service || 'Consulta' }}</div>
+                  </div>
+                  <div class="schedule-status-icon"
+                       [ngClass]="appt.status === 'confirmed' ? 'confirmed' : (appt.status === 'pending' ? 'pending' : 'info')">
+                    <span *ngIf="appt.status === 'confirmed'">&#10003;</span>
+                    <span *ngIf="appt.status === 'pending'">&#8987;</span>
+                    <span *ngIf="appt.status !== 'confirmed' && appt.status !== 'pending'">i</span>
+                  </div>
                 </div>
               </div>
-              <div *ngIf="!weekAppointments[d] || !weekAppointments[d].length" class="small text-body-secondary">Sin citas</div>
+            </div>
+
+            <!-- Empty state -->
+            <div *ngIf="todayAppointments.length === 0" class="text-center text-body-secondary py-4">
+              No hay citas programadas para hoy.
+            </div>
+          </div>
+
+          <!-- Schedule Stats Sidebar -->
+          <div class="schedule-stats" *ngIf="todayAppointments.length > 0">
+            <div>
+              <div class="schedule-stat-label">Total citas</div>
+              <div class="schedule-stat-value">{{ todayAppointments.length }}</div>
+            </div>
+            <div>
+              <div class="schedule-stat-label">Confirmadas</div>
+              <div class="schedule-stat-value">{{ confirmedCount }}</div>
+            </div>
+            <div>
+              <div class="schedule-stat-label">Pendientes</div>
+              <div class="schedule-stat-value">{{ pendingApptsCount }}</div>
+            </div>
+            <div>
+              <div class="schedule-stat-label">Ventas hoy</div>
+              <div class="schedule-stat-value">{{ todaySalesCount }}</div>
             </div>
           </div>
         </div>
-      </c-card-body>
-    </c-card>
+      </div>
 
-    <c-card class="mb-4">
-      <c-card-header><strong>Reglas por perfil</strong></c-card-header>
-      <c-card-body>
-        <div class="mb-2">
-          <div class="text-body-secondary small">Tu perfil</div>
-          <div class="fw-semibold">{{ me?.role || '—' }}</div>
+      <!-- Right Column: Charts -->
+      <div class="dashboard-main-right">
+
+        <!-- Financial Insights (Bar Chart) -->
+        <div class="dash-card">
+          <div class="dash-card-header">
+            <h5 class="dash-card-title">Ventas del mes</h5>
+          </div>
+          <div class="chart-container">
+            <c-chart type="bar" [data]="financialBarData" [options]="financialBarOptions" [height]="220" class="w-100" />
+          </div>
         </div>
 
-        <div class="small">
-          <div class="fw-semibold">superadmin</div>
-          <div class="text-body-secondary">Acceso total del sistema (incluye administración).</div>
+        <!-- Revenue by Category (Bar Chart) -->
+        <div class="dash-card">
+          <div class="dash-card-header">
+            <h5 class="dash-card-title">Ventas por método</h5>
+          </div>
+          <div class="chart-container">
+            <c-chart type="bar" [data]="categoryBarData" [options]="categoryBarOptions" [height]="220" class="w-100" />
+          </div>
         </div>
-        <hr />
-        <div class="small">
-          <div class="fw-semibold">admin</div>
-          <div class="text-body-secondary">Administración: Usuarios y Plantillas email + acceso al CRM.</div>
-        </div>
-        <hr />
-        <div class="small">
-          <div class="fw-semibold">doctor</div>
-          <div class="text-body-secondary">Operación clínica: pacientes, citas, documentos, ventas, perfil y QR.</div>
-        </div>
-        <hr />
-        <div class="small">
-          <div class="fw-semibold">staff</div>
-          <div class="text-body-secondary">Operación diaria: pacientes, citas, ventas, documentos, productos, perfil y QR.</div>
-        </div>
-        <hr />
-        <div class="small">
-          <div class="fw-semibold">patient</div>
-          <div class="text-body-secondary">Acceso limitado (según configuración). Recomendado: perfil, documentos y QR.</div>
-        </div>
-      </c-card-body>
-    </c-card>
 
-    <c-card>
-      <c-card-header><strong>Accesos rápidos</strong></c-card-header>
-      <c-card-body>
-        <div class="d-flex flex-wrap gap-2">
-          <a cButton color="primary" size="sm" [routerLink]="['/crm/patients']">Pacientes</a>
-          <a cButton color="primary" size="sm" [routerLink]="['/crm/appointments']">Citas</a>
-          <a cButton color="primary" size="sm" [routerLink]="['/crm/sales']">Ventas</a>
-          <a cButton color="primary" size="sm" [routerLink]="['/crm/documents']">Documentos</a>
-          <a cButton color="primary" size="sm" [routerLink]="['/crm/products']">Productos</a>
-          <a cButton color="primary" size="sm" [routerLink]="['/crm/profile']">Perfil</a>
+      </div>
+    </div>
+
+    <!-- ═══ Bottom Widgets ═══ -->
+    <div class="dashboard-bottom">
+
+      <!-- Patient Engagement -->
+      <div class="dash-card">
+        <div class="dash-card-header">
+          <h5 class="dash-card-title">Resumen de pacientes</h5>
         </div>
-      </c-card-body>
-    </c-card>
-  </c-col>
-</c-row>
+        <div class="engagement-content">
+          <div class="funnel-visual">
+            <div class="funnel-level funnel-level-1">{{ monthSalesCount }}</div>
+            <div class="funnel-level funnel-level-2">{{ todaySalesCount }}</div>
+            <div class="funnel-level funnel-level-3">{{ pendingSalesCount }}</div>
+          </div>
+          <div>
+            <div class="engagement-stats">
+              <div class="engagement-stat">
+                <div class="engagement-stat-value">{{ monthSalesCount }}</div>
+                <div class="engagement-stat-label">Mes</div>
+              </div>
+              <div class="engagement-stat">
+                <div class="engagement-stat-value">{{ todaySalesCount }}</div>
+                <div class="engagement-stat-label">Hoy</div>
+              </div>
+            </div>
+            <div class="small text-body-secondary mt-2">Ventas totales vs hoy</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Critical Alerts -->
+      <div class="dash-card alert-card">
+        <div class="dash-card-header">
+          <h5 class="dash-card-title">Alertas</h5>
+        </div>
+        <div *ngIf="criticalAlerts.length === 0" class="text-body-secondary small">Sin alertas activas</div>
+        <div *ngFor="let alert of criticalAlerts" class="alert-item">
+          <div class="alert-dot" [ngClass]="alert.type"></div>
+          <div class="alert-text">{{ alert.text }}</div>
+        </div>
+      </div>
+
+      <!-- Right: Staffing + Quick Access -->
+      <div class="right-widget-stack">
+        <div class="dash-card">
+          <div class="dash-card-header">
+            <h5 class="dash-card-title">Desempeño</h5>
+          </div>
+          <div>
+            <div class="staffing-label">
+              <span>Staffing Levels</span>
+              <span class="fw-semibold">{{ staffingPct }}%</span>
+            </div>
+            <div class="staffing-bar">
+              <div class="staffing-fill" [style.width.%]="staffingPct"></div>
+            </div>
+          </div>
+          <div class="mt-3">
+            <div class="staffing-label">
+              <span>Meta diaria</span>
+              <span class="fw-semibold">{{ dailyGoalPct }}%</span>
+            </div>
+            <div class="staffing-bar">
+              <div class="staffing-fill" [style.width.%]="dailyGoalPct" [style.background]="dailyGoalPct >= 100 ? '#22c55e' : '#eab308'"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dash-card">
+          <div class="dash-card-header">
+            <h5 class="dash-card-title">Accesos rápidos</h5>
+          </div>
+          <div class="d-flex flex-wrap gap-2">
+            <a cButton color="primary" size="sm" [routerLink]="['/crm/patients']">Pacientes</a>
+            <a cButton color="primary" size="sm" [routerLink]="['/crm/appointments']">Citas</a>
+            <a cButton color="primary" size="sm" [routerLink]="['/crm/sales']">Ventas</a>
+            <a cButton color="primary" size="sm" [routerLink]="['/crm/products']">Productos</a>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ═══ Recent Sales Table ═══ -->
+    <div class="dash-card" *ngIf="recentSales.length > 0">
+      <div class="dash-card-header">
+        <h5 class="dash-card-title">Últimas ventas</h5>
+        <a cButton color="primary" size="sm" [routerLink]="['/crm/sales']">Ver todas</a>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Paciente</th>
+              <th>Estado</th>
+              <th>Método</th>
+              <th>Creado</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let s of recentSales">
+              <td>{{ s.id }}</td>
+              <td>{{ s.patient_id }}</td>
+              <td>
+                <span class="badge" [ngClass]="{
+                  'bg-success': s.status === 'completed',
+                  'bg-warning text-dark': s.status === 'pending',
+                  'bg-secondary': s.status !== 'completed' && s.status !== 'pending'
+                }">{{ s.status || '-' }}</span>
+              </td>
+              <td>{{ s.payment_method }}</td>
+              <td>{{ s.created_at || '-' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>

@@ -10,6 +10,14 @@ export const authInterceptorFn: HttpInterceptorFn = (req, next) => {
   const router = inject(Router);
   const token = tokenStorage.getToken();
 
+  // If token is present but expired, clear and redirect to login immediately
+  if (token && tokenStorage.isTokenExpired()) {
+    tokenStorage.clearToken();
+    router.navigate(['/login'], { queryParams: { sessionExpired: 'true' } });
+    // Abort the request immediately by returning an error observable.
+    return throwError(() => new Error('Token expired'));
+  }
+
   let authReq = req;
   if (token && !req.headers.has('Authorization')) {
     authReq = req.clone({

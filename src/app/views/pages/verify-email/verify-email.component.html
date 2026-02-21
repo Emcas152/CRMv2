@@ -1,0 +1,21 @@
+<div class="container py-5" style="max-width:520px">
+  <h3 class="mb-3">Verificación de correo</h3>
+
+  <div *ngIf="isLoading" class="alert alert-info">
+    Verificando tu correo…
+  </div>
+
+  <div *ngIf="!isLoading && ok" class="alert alert-success">
+    {{ message }}
+  </div>
+
+  <div *ngIf="!isLoading && !ok" class="alert alert-danger">
+    {{ message || 'No se pudo verificar el correo.' }}
+  </div>
+
+  <div class="d-flex gap-2">
+    <a class="btn btn-primary" routerLink="/login">Ir a Login</a>
+    <button class="btn btn-outline-secondary" type="button" (click)="verify()" [disabled]="isLoading">Reintentar</button>
+  </div>
+</div>
+

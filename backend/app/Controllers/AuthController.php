@@ -372,7 +372,12 @@ class AuthController
 
         $response = ['user' => $userData];
         if ($normalizedRole === 'patient') {
-            $patient = $db->fetchOne('SELECT * FROM patients WHERE user_id = ?', [$userData['id']]);
+            // Some databases/patient records may not have user_id set (legacy/imported data).
+            // Fall back to matching by email to avoid returning an empty patient profile.
+            $patient = $db->fetchOne(
+                'SELECT * FROM patients WHERE user_id = ? OR (email != "" AND email = ?) LIMIT 1',
+                [$userData['id'], (string)($userData['email'] ?? '')]
+            );
             $response['patient'] = $patient ?: [];
         }
         Response::success($response);

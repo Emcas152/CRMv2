@@ -1,4 +1,4 @@
-import { Component, OnInit, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
 import { RouterLink, RouterOutlet } from '@angular/router';
 import { NgScrollbar } from 'ngx-scrollbar';
 
@@ -49,6 +49,7 @@ function isOverflown(element: HTMLElement) {
 })
 export class DefaultLayoutComponent implements OnInit {
   readonly #auth = inject(AuthService);
+  readonly #cdr = inject(ChangeDetectorRef);
   public navItems = [...navItems];
 
   async ngOnInit(): Promise<void> {
@@ -60,11 +61,13 @@ export class DefaultLayoutComponent implements OnInit {
           if (!item?.roles || !Array.isArray(item.roles)) return true;
           return item.roles.includes(role);
         });
+        this.#cdr.detectChanges();
         return;
       }
     } catch {
       // Fall back to unfiltered nav.
     }
     this.navItems = [...navItems];
+    this.#cdr.detectChanges();
   }
 }

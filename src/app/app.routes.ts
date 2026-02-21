@@ -50,5 +50,12 @@ export const routes: Routes = [
       title: 'Register Page'
     }
   },
+  {
+    path: 'verify-email',
+    loadComponent: () => import('./views/pages/verify-email/verify-email.component').then(m => m.VerifyEmailComponent),
+    data: {
+      title: 'Verificar Email'
+    }
+  },
   { path: '**', redirectTo: 'crm' }
 ];
