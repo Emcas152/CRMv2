@@ -94,6 +94,28 @@
                 <input id="sigFile" class="form-control" type="file" accept="image/*" (change)="onSignatureFileChange($event)" />
                 <div class="text-body-secondary small mt-1">Arrastra la firma sobre el documento.</div>
               </div>
+
+              <div style="min-width:260px;max-width:520px;flex:1">
+                <label cLabel>O dibuja tu firma</label>
+                <div class="border rounded p-2" style="background: rgba(255,255,255,.02)">
+                  <canvas
+                    #signaturePadCanvas
+                    aria-label="Firma manuscrita"
+                    style="width:100%;height:140px;display:block;touch-action:none;cursor:crosshair"
+                    (pointerdown)="onSignaturePadPointerDown($event)"
+                    (pointermove)="onSignaturePadPointerMove($event)"
+                    (pointerup)="onSignaturePadPointerUp($event)"
+                    (pointercancel)="onSignaturePadPointerUp($event)"
+                  ></canvas>
+                </div>
+                <div class="d-flex gap-2 mt-2">
+                  <button cButton color="secondary" size="sm" type="button" (click)="clearSignaturePad()">Limpiar</button>
+                  <button cButton color="primary" size="sm" type="button" (click)="useSignaturePad()" [disabled]="!signaturePadHasInk">
+                    Usar esta firma
+                  </button>
+                </div>
+              </div>
+
               <div style="min-width:220px">
                 <label cLabel for="sigScale">Tamaño</label>
                 <input id="sigScale" class="form-range" type="range" min="0.5" max="2.5" step="0.1" [value]="signatureScale" (input)="onSignatureScaleChange($event)" />

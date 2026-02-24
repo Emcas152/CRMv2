@@ -65,6 +65,7 @@ export class DocumentsPageComponent implements OnInit {
   signTarget: DocumentItem | null = null;
 
   @ViewChild('signCanvas') signCanvasRef?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('signaturePadCanvas') signaturePadCanvasRef?: ElementRef<HTMLCanvasElement>;
 
   signLoading = false;
   signApplying = false;
@@ -73,6 +74,12 @@ export class DocumentsPageComponent implements OnInit {
   signatureSelectedFile: File | null = null;
   signatureImg: HTMLImageElement | null = null;
   signatureScale = 1;
+
+  signaturePadHasInk = false;
+  #sigPadDrawing = false;
+  #sigPadLastX = 0;
+  #sigPadLastY = 0;
+  #sigPadPointerId: number | null = null;
 
   #baseCanvas: HTMLCanvasElement | null = null;
   #isDraggingSig = false;
@@ -214,6 +221,7 @@ export class DocumentsPageComponent implements OnInit {
     this.signatureSelectedFile = null;
     this.signatureImg = null;
     this.signatureScale = 1;
+    this.signaturePadHasInk = false;
     this.signDocBytes = null;
     this.signDocMime = null;
     this.#baseCanvas = null;
@@ -231,6 +239,7 @@ export class DocumentsPageComponent implements OnInit {
     this.signForm.reset({ documentId: 0, method: '', meta: '' });
     this.signatureSelectedFile = null;
     this.signatureImg = null;
+    this.signaturePadHasInk = false;
     this.signDocBytes = null;
     this.signDocMime = null;
     this.#baseCanvas = null;
@@ -306,7 +315,7 @@ export class DocumentsPageComponent implements OnInit {
       return;
     }
     if (!this.signatureImg) {
-      this.error = 'Selecciona una firma (imagen) para colocarla.';
+      this.error = 'Selecciona o dibuja una firma para colocarla.';
       return;
     }
     const canvas = this.signCanvasRef?.nativeElement;
@@ -341,6 +350,96 @@ export class DocumentsPageComponent implements OnInit {
     } finally {
       this.signApplying = false;
     }
+  }
+
+  onSignaturePadPointerDown(evt: PointerEvent): void {
+    const canvas = this.signaturePadCanvasRef?.nativeElement;
+    if (!canvas) return;
+    // Only primary button
+    if (evt.button !== 0) return;
+
+    this.#ensureSignaturePadSized();
+    const ctx = canvas.getContext('2d');
+    if (ctx) this.#configureSignaturePadCtx(ctx);
+
+    const p = this.#canvasPoint(canvas, evt);
+    this.#sigPadDrawing = true;
+    this.#sigPadPointerId = evt.pointerId;
+    this.#sigPadLastX = p.x;
+    this.#sigPadLastY = p.y;
+    try {
+      canvas.setPointerCapture(evt.pointerId);
+    } catch {
+      // ignore
+    }
+  }
+
+  onSignaturePadPointerMove(evt: PointerEvent): void {
+    if (!this.#sigPadDrawing) return;
+    if (this.#sigPadPointerId !== null && evt.pointerId !== this.#sigPadPointerId) return;
+    const canvas = this.signaturePadCanvasRef?.nativeElement;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const p = this.#canvasPoint(canvas, evt);
+
+    ctx.beginPath();
+    ctx.moveTo(this.#sigPadLastX, this.#sigPadLastY);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+
+    this.#sigPadLastX = p.x;
+    this.#sigPadLastY = p.y;
+    this.signaturePadHasInk = true;
+  }
+
+  onSignaturePadPointerUp(evt: PointerEvent): void {
+    const canvas = this.signaturePadCanvasRef?.nativeElement;
+    this.#sigPadDrawing = false;
+    this.#sigPadPointerId = null;
+    if (!canvas) return;
+    try {
+      canvas.releasePointerCapture(evt.pointerId);
+    } catch {
+      // ignore
+    }
+  }
+
+  clearSignaturePad(): void {
+    const canvas = this.signaturePadCanvasRef?.nativeElement;
+    if (!canvas) {
+      this.signaturePadHasInk = false;
+      return;
+    }
+    this.#ensureSignaturePadSized();
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      this.signaturePadHasInk = false;
+      return;
+    }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    this.#configureSignaturePadCtx(ctx);
+    this.signaturePadHasInk = false;
+  }
+
+  async useSignaturePad(): Promise<void> {
+    this.error = null;
+    const canvas = this.signaturePadCanvasRef?.nativeElement;
+    if (!canvas) return;
+    if (!this.signaturePadHasInk) {
+      this.error = 'Dibuja una firma antes de usarla.';
+      return;
+    }
+    this.#ensureSignaturePadSized();
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('No se pudo exportar la firma'))), 'image/png');
+    });
+
+    const name = `firma-${this.signTarget?.id ?? 'documento'}.png`;
+    const file = new File([blob], name, { type: 'image/png' });
+    this.signatureSelectedFile = file;
+    await this.#loadSignatureImage(file);
   }
 
   async prevPage(): Promise<void> {
@@ -545,6 +644,8 @@ export class DocumentsPageComponent implements OnInit {
       this.signDocMime = mime;
 
       await this.#waitForCanvas();
+      await this.#waitForSignaturePadCanvas();
+      this.#initSignaturePad();
       await this.#renderDocument(bytes, mime);
     } catch (err: any) {
       this.error = this.#formatError(err);
@@ -559,6 +660,49 @@ export class DocumentsPageComponent implements OnInit {
       await new Promise((r) => requestAnimationFrame(() => r(null)));
     }
     throw new Error('Canvas no disponible');
+  }
+
+  async #waitForSignaturePadCanvas(): Promise<void> {
+    for (let i = 0; i < 30; i++) {
+      if (this.signaturePadCanvasRef?.nativeElement) return;
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    }
+    // If it doesn't exist, it's not fatal (template could have been customized)
+  }
+
+  #initSignaturePad(): void {
+    const canvas = this.signaturePadCanvasRef?.nativeElement;
+    if (!canvas) return;
+    this.#ensureSignaturePadSized();
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    this.#configureSignaturePadCtx(ctx);
+    if (!this.signaturePadHasInk) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }
+
+  #ensureSignaturePadSized(): void {
+    const canvas = this.signaturePadCanvasRef?.nativeElement;
+    if (!canvas) return;
+    // Match internal bitmap to displayed size for crisp lines
+    const rect = canvas.getBoundingClientRect();
+    const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    const nextW = Math.max(1, Math.floor(rect.width * dpr));
+    const nextH = Math.max(1, Math.floor(rect.height * dpr));
+    if (canvas.width !== nextW || canvas.height !== nextH) {
+      canvas.width = nextW;
+      canvas.height = nextH;
+    }
+  }
+
+  #configureSignaturePadCtx(ctx: CanvasRenderingContext2D): void {
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 2.2;
+    const root = getComputedStyle(document.documentElement);
+    const color = (root.getPropertyValue('--cui-body-color') || '').trim();
+    ctx.strokeStyle = color || getComputedStyle(document.body).color;
   }
 
   async #renderDocument(bytes: Uint8Array, mime: string): Promise<void> {
